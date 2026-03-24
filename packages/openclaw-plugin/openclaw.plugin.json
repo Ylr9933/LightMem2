@@ -167,15 +167,6 @@
         "default": true,
         "description": "Only apply root-link rewrite on strict first-turn payload (developer+user)."
       },
-      "responseRootFirstTurnMode": {
-        "type": "string",
-        "enum": [
-          "parent-id-only",
-          "user-only"
-        ],
-        "default": "parent-id-only",
-        "description": "First-turn rewrite mode. parent-id-only keeps original OpenClaw payload and only injects previous_response_id; user-only trims first turn to user content after root-link."
-      },
       "responseRootPrimeEnabled": {
         "type": "boolean",
         "default": true,
@@ -303,9 +294,6 @@
     },
     "responseRootFirstTurnOnly": {
       "label": "Response Root First Turn Only"
-    },
-    "responseRootFirstTurnMode": {
-      "label": "Response Root First Turn Mode"
     },
     "responseRootPrimeEnabled": {
       "label": "Response Root Prime Enabled"

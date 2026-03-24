@@ -50,7 +50,6 @@ type EcoClawPluginConfig = {
   debugTapPath?: string;
   responseRootLinkEnabled?: boolean;
   responseRootFirstTurnOnly?: boolean;
-  responseRootFirstTurnMode?: "parent-id-only" | "user-only";
   responseRootMinInstructionChars?: number;
   responseRootPrefixMaxChars?: number;
   responseRootMatchMinRatio?: number;
@@ -310,7 +309,6 @@ function normalizeConfig(raw: unknown): Required<Omit<EcoClawPluginConfig, "prox
     debugTapPath: cfg.debugTapPath ?? join(stateDir, "ecoclaw", "provider-traffic.jsonl"),
     responseRootLinkEnabled: cfg.responseRootLinkEnabled ?? true,
     responseRootFirstTurnOnly: cfg.responseRootFirstTurnOnly ?? true,
-    responseRootFirstTurnMode: cfg.responseRootFirstTurnMode ?? "parent-id-only",
     responseRootMinInstructionChars: Math.max(64, cfg.responseRootMinInstructionChars ?? 1200),
     responseRootPrefixMaxChars: Math.max(128, cfg.responseRootPrefixMaxChars ?? 6000),
     responseRootMatchMinRatio: Math.min(1, Math.max(0.1, cfg.responseRootMatchMinRatio ?? 0.7)),
@@ -365,7 +363,7 @@ function extractInputText(input: any): string {
   return "";
 }
 
-function getStrictDeveloperUserFirstTurn(input: any): { developerText: string; userItem: any } | null {
+function getStrictDeveloperUserFirstTurn(input: any): { developerText: string; userItem: any; developerItem: any } | null {
   if (!Array.isArray(input) || input.length !== 2) return null;
   const first = input[0];
   const last = input[1];
@@ -376,7 +374,52 @@ function getStrictDeveloperUserFirstTurn(input: any): { developerText: string; u
       ? String((first as any).content)
       : extractInputText([first]);
   if (!developerText.trim()) return null;
-  return { developerText, userItem: last };
+  return { developerText, userItem: last, developerItem: first };
+}
+
+type DeveloperRewrite = {
+  canonicalDeveloperText: string;
+  forwardedDeveloperText: string;
+  changed: boolean;
+  workdir?: string;
+  agentId?: string;
+};
+
+function rewriteDeveloperPromptForRootLink(developerText: string): DeveloperRewrite {
+  const raw = String(developerText ?? "");
+  if (!raw.trim()) {
+    return {
+      canonicalDeveloperText: raw,
+      forwardedDeveloperText: raw,
+      changed: false,
+    };
+  }
+  const workdirMatch = raw.match(/Your working directory is:\s*([^\n\r]+)/i);
+  const runtimeAgentMatch = raw.match(/Runtime:\s*agent=([^|\n\r]+)/i);
+  const workdir = workdirMatch?.[1]?.trim();
+  const agentId = runtimeAgentMatch?.[1]?.trim();
+
+  let canonical = raw;
+  if (workdir) {
+    canonical = canonical.split(workdir).join("<WORKDIR>");
+  }
+  canonical = canonical.replace(/(Runtime:\s*agent=)[^|\n\r]+/gi, "$1<AGENT_ID>");
+
+  const dynamicLines: string[] = [];
+  if (workdir) dynamicLines.push(`- WORKDIR: ${workdir}`);
+  if (agentId) dynamicLines.push(`- AGENT_ID: ${agentId}`);
+  const dynamicTail =
+    dynamicLines.length > 0
+      ? `\n\n## Dynamic Runtime Context\n${dynamicLines.join("\n")}`
+      : "";
+  const forwarded = canonical + dynamicTail;
+  return {
+    canonicalDeveloperText: canonical,
+    forwardedDeveloperText: forwarded,
+    changed: canonical !== raw || dynamicTail.length > 0,
+    workdir,
+    agentId,
+  };
 }
 
 function normalizeProxyModelId(model: string): string {
@@ -581,11 +624,26 @@ async function startEmbeddedResponsesProxy(
         payload.model = upstreamModel;
       }
       const instructions = normalizeText(String(payload?.instructions ?? ""));
-      const inputText = normalizeText(extractInputText(payload?.input));
       const devAndUser = getStrictDeveloperUserFirstTurn(payload?.input);
       const firstTurnCandidate = Boolean(devAndUser);
-      const developerText = normalizeText(devAndUser?.developerText ?? "");
-      const sigSource = developerText || instructions;
+      const developerRewrite = devAndUser
+        ? rewriteDeveloperPromptForRootLink(devAndUser.developerText)
+        : null;
+      const developerCanonicalText = normalizeText(
+        developerRewrite?.canonicalDeveloperText ?? devAndUser?.developerText ?? "",
+      );
+      const developerForwardedText = normalizeText(
+        developerRewrite?.forwardedDeveloperText ?? devAndUser?.developerText ?? "",
+      );
+      if (devAndUser && developerRewrite && Array.isArray(payload?.input) && payload.input.length >= 1) {
+        payload.input[0] = {
+          ...(devAndUser.developerItem ?? payload.input[0]),
+          role: "developer",
+          content: developerRewrite.forwardedDeveloperText,
+        };
+      }
+      const inputText = normalizeText(extractInputText(payload?.input));
+      const sigSource = developerCanonicalText || instructions;
       const sig = sha256Hex(`${upstream.baseUrl}|${upstreamModel || model}|${sigSource}`);
       const hasPrev = typeof payload?.previous_response_id === "string" && payload.previous_response_id.length > 0;
       const shouldAttemptRootLink =
@@ -607,7 +665,11 @@ async function startEmbeddedResponsesProxy(
           devUserDetected: Boolean(devAndUser),
           firstTurnCandidate,
           responseRootFirstTurnOnly: cfg.responseRootFirstTurnOnly,
-          developerChars: developerText.length,
+          developerChars: developerForwardedText.length,
+          developerCanonicalChars: developerCanonicalText.length,
+          developerRewritten: Boolean(developerRewrite?.changed),
+          developerRewriteWorkdir: developerRewrite?.workdir ?? "",
+          developerRewriteAgentId: developerRewrite?.agentId ?? "",
           rootSig: sig,
           rootStateExistsBefore: rootStateBySig.has(sig),
           rootPrimeEnabled: cfg.responseRootPrimeEnabled,
@@ -623,14 +685,14 @@ async function startEmbeddedResponsesProxy(
           !state &&
           cfg.responseRootPrimeEnabled &&
           devAndUser &&
-          developerText.length >= cfg.responseRootMinInstructionChars
+          developerCanonicalText.length >= cfg.responseRootMinInstructionChars
         ) {
           try {
             const primePayload: any = { ...payload };
             delete primePayload.previous_response_id;
             primePayload.model = upstreamModel || model;
             primePayload.store = true;
-            primePayload.input = [{ role: "developer", content: devAndUser.developerText }];
+            primePayload.input = [{ role: "developer", content: developerRewrite?.canonicalDeveloperText ?? devAndUser.developerText }];
             const primeResp = await fetch(`${upstream.baseUrl}/responses`, {
               method: "POST",
               headers: {
@@ -667,13 +729,9 @@ async function startEmbeddedResponsesProxy(
         }
         if (state?.rootResponseId && devAndUser) {
           payload.previous_response_id = state.rootResponseId;
-          if (cfg.responseRootFirstTurnMode === "user-only") {
-            // Aggressive token-saving mode: keep only first-turn user item after linking to root.
-            payload.input = [devAndUser.userItem];
-          }
           injectedFromRoot = true;
           logger.info(
-            `[ecoclaw] proxy injected previous_response_id model=${model} mode=${cfg.responseRootFirstTurnMode}`,
+            `[ecoclaw] proxy injected previous_response_id model=${model} mode=parent-id-only`,
           );
         } else if (!cfg.responseRootFirstTurnOnly && state?.rootResponseId && instructions.length >= cfg.responseRootMinInstructionChars) {
           const ratio = commonPrefixRatio(inputText, state.prefixSample);
