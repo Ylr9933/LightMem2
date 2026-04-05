@@ -2,6 +2,7 @@ import type { RuntimeTurnContext, RuntimeTurnResult } from "@ecoclaw/kernel";
 
 export type BuiltinReductionPassId =
   | "tool_payload_trim"
+  | "html_slimming"
   | "format_slimming"
   | "semantic_llmlingua2";
 

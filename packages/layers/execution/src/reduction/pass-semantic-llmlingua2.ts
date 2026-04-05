@@ -64,8 +64,21 @@ type SemanticConfig = {
   embeddingRequestTimeoutMs: number;
 };
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const WORKER_PATH = join(__dirname, "semantic-llmlingua2-worker.py");
+function resolveModuleDir(): string | undefined {
+  if (typeof __dirname === "string" && __dirname.length > 0) {
+    return __dirname;
+  }
+  const importMetaUrl =
+    typeof import.meta !== "undefined" && typeof import.meta.url === "string"
+      ? import.meta.url
+      : undefined;
+  return importMetaUrl ? dirname(fileURLToPath(importMetaUrl)) : undefined;
+}
+
+const MODULE_DIR = resolveModuleDir();
+const WORKER_PATH = MODULE_DIR
+  ? join(MODULE_DIR, "semantic-llmlingua2-worker.py")
+  : "semantic-llmlingua2-worker.py";
 
 const asPositiveNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;

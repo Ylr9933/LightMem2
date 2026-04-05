@@ -45,6 +45,14 @@ export function resolveReductionPasses(
       },
     },
     {
+      id: "html_slimming",
+      phase: "before_call",
+      target: "structured_payload",
+      options: {
+        enabled: true,
+      },
+    },
+    {
       id: "format_slimming",
       phase: "after_call",
       target: "result_content",

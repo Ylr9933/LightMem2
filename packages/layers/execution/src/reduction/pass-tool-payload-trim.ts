@@ -167,6 +167,7 @@ const readExplicitPayloadDirective = (segment: ContextSegment): ExplicitPayloadD
 const normalizeHeader = (line: string): { kind: PayloadKind; remainder: string } | null => {
   const trimmed = line.trim();
   if (!trimmed) return null;
+  if (/^```/.test(trimmed)) return null;
   const normalized = trimmed
     .replace(/^[#>*\-\s`]+/, "")
     .replace(/[*`]+$/g, "")
@@ -216,6 +217,22 @@ const splitIntoSections = (text: string): ParsedSection[] => {
 
 const clipText = (value: string, maxChars: number): string =>
   value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`;
+
+const clipLine = (value: string, maxChars: number): string =>
+  clipText(value.trim(), Math.max(24, maxChars));
+
+const uniqueLines = (lines: string[], maxItems: number): string[] => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const normalized = line.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+};
 
 const summarizeLineBlock = (
   text: string,
@@ -413,6 +430,14 @@ const reduceSegmentText = (
   cfg: ToolPayloadTrimConfig,
 ): { text: string; changed: boolean; reducedKinds: PayloadKind[] } => {
   const explicit = readExplicitPayloadDirective(segment);
+  const metadata =
+    segment.metadata && typeof segment.metadata === "object"
+      ? (segment.metadata as Record<string, unknown>)
+      : undefined;
+  const toolPayload =
+    metadata?.toolPayload && typeof metadata.toolPayload === "object"
+      ? (metadata.toolPayload as Record<string, unknown>)
+      : undefined;
   if (explicit.kind) {
     return reduceTextByExplicitKind(segment.text, explicit.kind, cfg);
   }
@@ -444,6 +469,45 @@ const reduceSegmentText = (
     reducedKinds: [...reducedKinds],
   };
 };
+
+export function debugReduceToolPayloadSegment(
+  segment: ContextSegment,
+  options?: Record<string, unknown>,
+): {
+  config: ToolPayloadTrimConfig;
+  explicit: ExplicitPayloadDirective;
+  isLikelyToolPayload: boolean;
+  sections: ParsedSection[];
+  standaloneClassification: {
+    isJson: boolean;
+    isBlob: boolean;
+    exceedsStdoutMax: boolean;
+  };
+  result: { text: string; changed: boolean; reducedKinds: PayloadKind[] };
+} {
+  const config = resolveConfig(options);
+  const explicit = readExplicitPayloadDirective(segment);
+  const trimmed = segment.text.trim();
+  let isJson = false;
+  try {
+    JSON.parse(trimmed);
+    isJson = true;
+  } catch {
+    isJson = false;
+  }
+  return {
+    config,
+    explicit,
+    isLikelyToolPayload: isLikelyToolPayloadSegment(segment),
+    sections: splitIntoSections(segment.text),
+    standaloneClassification: {
+      isJson,
+      isBlob: isLikelyBlob(trimmed),
+      exceedsStdoutMax: trimmed.length > config.stdout.maxChars,
+    },
+    result: reduceSegmentText(segment, config),
+  };
+}
 
 const updateSegments = (
   turnCtx: RuntimeTurnContext,

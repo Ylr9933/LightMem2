@@ -1,4 +1,5 @@
 import { formatSlimmingPass } from "./pass-format-slimming.js";
+import { htmlSlimmingPass } from "./pass-html-slimming.js";
 import { semanticLlmlingua2Pass } from "./pass-semantic-llmlingua2.js";
 import { toolPayloadTrimPass } from "./pass-tool-payload-trim.js";
 import type {
@@ -10,6 +11,7 @@ import type {
 
 const BUILTIN_PASSES: Record<BuiltinReductionPassId, ReductionPassHandler> = {
   tool_payload_trim: toolPayloadTrimPass,
+  html_slimming: htmlSlimmingPass,
   format_slimming: formatSlimmingPass,
   semantic_llmlingua2: semanticLlmlingua2Pass,
 };
