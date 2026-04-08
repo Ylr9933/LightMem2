@@ -1,6 +1,8 @@
-export * from "./semantic/index.js";
-export * from "./stabilizer/index.js";
-export * from "./compaction/index.js";
-export * from "./summary/index.js";
-export * from "./handoff/index.js";
-export * from "./reduction/index.js";
+// EcoClaw Execution Layer
+//
+// Organized into two tiers:
+// - composer: High-level orchestration modules (Stabilizer, Compaction, Reduction)
+// - atomic: Primitive operations used by composers (Summary, Semantic, Handoff, Passes)
+
+export * from "./composer/index.js";
+export * from "./atomic/index.js";

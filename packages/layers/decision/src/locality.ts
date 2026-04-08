@@ -688,7 +688,7 @@ function buildRepeatedReadSignals(
 
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i];
-    if (message.role !== "tool" && message.role !== "toolResult") continue;
+    if (message.role !== "tool") continue;
 
     const toolName = readToolName(message);
     if (toolName !== "read" && toolName !== "exec") continue;

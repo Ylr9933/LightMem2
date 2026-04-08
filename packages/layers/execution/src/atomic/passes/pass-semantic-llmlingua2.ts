@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReductionPassHandler } from "./types.js";
+import type { ReductionPassHandler } from "../../composer/reduction/types.js";
 
 const DEFAULT_TARGET_RATIO = 0.55;
 const DEFAULT_MIN_INPUT_CHARS = 4000;

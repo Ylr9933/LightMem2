@@ -1,5 +1,5 @@
 import type { ContextSegment } from "@ecoclaw/kernel";
-import type { ReductionPassHandler } from "./types.js";
+import type { ReductionPassHandler } from "../../composer/reduction/types.js";
 
 type HtmlSlimmingOptions = {
   enabled?: boolean;

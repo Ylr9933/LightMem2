@@ -8,7 +8,7 @@ import {
 import {
   createHandoffModule,
   generateHandoffArtifact,
-} from "../src/handoff/index.js";
+} from "../src/atomic/handoff/index.js";
 import { createMockRuntime, createTurnContext, createTurnResult } from "./test-utils.js";
 
 test("handoff artifact captures operational continuation info", async () => {

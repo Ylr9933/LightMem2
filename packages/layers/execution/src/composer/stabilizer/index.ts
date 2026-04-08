@@ -32,7 +32,11 @@ export function createStabilizerModule(cfg: StabilizerModuleConfig = {}): Runtim
       const stable = ctx.segments.filter((s) => s.kind === "stable").map((s) => s.text).join("\n");
       const stabilizerEligible = stable.length >= minPrefixChars;
       const stablePrefixSignature = signature(stable);
-      const stablePrefixNormalizedSignature = signature(normalizeStableText(stable));
+      const normalizedStable = normalizeStableText(stable);
+      const stablePrefixNormalizedSignature = signature(normalizedStable);
+      const promptCacheKey = stabilizerEligible
+        ? `ecoclaw-pfx-${stablePrefixNormalizedSignature.slice(0, 24)}`
+        : undefined;
       const nextCtx = {
         ...ctx,
         metadata: {
@@ -43,6 +47,7 @@ export function createStabilizerModule(cfg: StabilizerModuleConfig = {}): Runtim
             prefixChars: stable.length,
             prefixSignature: stablePrefixSignature,
             prefixSignatureNormalized: stablePrefixNormalizedSignature,
+            promptCacheKey,
           },
         },
       };
@@ -55,6 +60,7 @@ export function createStabilizerModule(cfg: StabilizerModuleConfig = {}): Runtim
           prefixChars: stable.length,
           prefixSignature: stablePrefixSignature,
           prefixSignatureNormalized: stablePrefixNormalizedSignature,
+          promptCacheKey,
         },
       });
     },

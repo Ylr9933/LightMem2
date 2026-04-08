@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findRuntimeEventsByType, ECOCLAW_EVENT_TYPES } from "@ecoclaw/kernel";
-import { createStabilizerModule } from "../src/stabilizer/index.js";
+import { createStabilizerModule } from "../src/composer/stabilizer/index.js";
 import { createTurnContext, createTurnResult, createMockRuntime } from "./test-utils.js";
 
 test("stabilizer records normalized signatures and cache observations", async () => {

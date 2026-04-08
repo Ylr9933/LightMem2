@@ -3,6 +3,7 @@ import {
   appendContextEvent,
   appendResultEvent,
   type RuntimeModule,
+  type RuntimeStateStore,
 } from "@ecoclaw/kernel";
 import {
   readReductionMetadata,
@@ -21,9 +22,7 @@ import type {
 export * from "./types.js";
 export * from "./registry.js";
 export * from "./pipeline.js";
-export * from "./pass-tool-payload-trim.js";
-export * from "./pass-format-slimming.js";
-export * from "./pass-semantic-llmlingua2.js";
+export * from "../../atomic/passes/index.js";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -112,10 +111,13 @@ export function createReductionModule(cfg: ReductionModuleConfig = {}): RuntimeM
     name: "module-reduction",
     async beforeCall(ctx) {
       const passes = selectReductionPassesForPhase(allPasses, ctx.metadata, "before_call");
+      // Try to get stateStore from config first, then fallback to metadata
+      const stateStore = cfg.stateStore ?? (ctx.metadata?.stateStore as RuntimeStateStore | undefined);
       const { turnCtx: reducedCtx, report } = await runReductionBeforeCall({
         turnCtx: ctx,
         passes,
         registry: cfg.registry,
+        stateStore,
       });
       const prior = readReductionMetadata(reducedCtx.metadata);
       const metadata: ReductionMetadata = {

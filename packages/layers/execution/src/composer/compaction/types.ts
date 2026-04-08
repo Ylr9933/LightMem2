@@ -3,7 +3,7 @@ import type {
   SemanticGenerationRecord,
   SemanticGenerationRoleCounts,
   SemanticPromptResolution,
-} from "../semantic/index.js";
+} from "../../atomic/semantic/index.js";
 
 export type RecentMessage = {
   index?: number;

@@ -19,7 +19,7 @@ import {
   uniqueNonEmpty,
   type ConversationBlock,
   type SemanticGenerationMode,
-} from "../semantic/index.js";
+} from "../../atomic/semantic/index.js";
 import { buildCompactionPlan } from "./plan-builder.js";
 import {
   resolveCompactionPrompt,
@@ -36,17 +36,44 @@ export * from "./plan-builder.js";
 export * from "./strategy-registry.js";
 export * from "./strategy-summary-then-fork.js";
 
-type TurnLocalCandidate = {
-  sourceIndex: number;
-  sourceSegmentId: string;
-  sourceToolName: string;
-  sourceDataKey: string;
-  sourceText: string;
-  writeIndex: number;
-  writeSegmentId: string;
-  writeToolName: string;
-  writeText: string;
-};
+/**
+ * Archive directory for persisted tool results.
+ *
+ * Strategy:
+ * - Prefer workspaceDir from context metadata if available (passed from openclaw plugin)
+ * - For session IDs like "bench-...-0169-j0021", extract runId and jobId
+ * - Store archives in /tmp/{runId}/agent_workspace_{jobId}/.ecoclaw-archives/
+ * - This allows the model to read back archived content using the read tool
+ */
+function defaultArchiveDir(sessionId: string, workspaceDir?: string): string {
+  // Use workspaceDir from metadata if provided (preferred approach)
+  if (workspaceDir) {
+    return join(workspaceDir, ".ecoclaw-archives");
+  }
+
+  // Try to extract runId and jobId from sessionId
+  // Format: "bench-xxx-{runId}-j{jobId}" or similar patterns
+  const match = sessionId.match(/-(\d+)-j(\d+)$/);
+
+  if (match) {
+    const runId = match[1];
+    const jobId = match[2];
+    // Store in the agent workspace so the model can read it back
+    return `/tmp/pinchbench/${runId}/agent_workspace_j${jobId}/.ecoclaw-archives`;
+  }
+
+  // Fallback: use home directory with sessionId
+  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
+  return join(homeDir, ".openclaw", "ecoclaw-plugin-state", "ecoclaw", "tool-result-archives", sanitizePathPart(sessionId));
+}
+
+function sanitizePathPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function hashText(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -92,6 +119,18 @@ function isSuccessfulWriteLike(text: string): boolean {
   if (lowered.includes("'status': 'success'")) return true;
   return false;
 }
+
+type TurnLocalCandidate = {
+  sourceIndex: number;
+  sourceSegmentId: string;
+  sourceToolName: string;
+  sourceDataKey: string;
+  sourceText: string;
+  writeIndex: number;
+  writeSegmentId: string;
+  writeToolName: string;
+  writeText: string;
+};
 
 /**
  * Detects read operations that have been "consumed" by subsequent write operations.
@@ -335,20 +374,6 @@ function pickRepeatedReadCandidates(
   return candidates;
 }
 
-function sanitizePathPart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
-}
-
-function defaultArchiveDir(sessionId: string): string {
-  // Use absolute path based on user's home directory
-  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return join(homeDir, ".openclaw", "ecoclaw-plugin-state", "ecoclaw", "context-store", sanitizePathPart(sessionId));
-}
-
-function hashText(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 function buildCompactedStub(candidate: TurnLocalCandidate, archivePath: string): string {
   const writePreview = clipText(candidate.writeText, 220);
   return (
@@ -375,43 +400,80 @@ async function runTurnLocalEvidenceCompaction(
 
   debugLog(`Checking turn-local compaction. segments.length=${ctx.segments.length}`);
 
-  // Check policy decision for turn-local compaction
-  const policyLocality = ctx.metadata?.policy?.decisions?.locality as Record<string, unknown> | undefined;
-  const turnLocalCandidateIds = Array.isArray(policyLocality?.turnLocalCandidateMessageIds)
-    ? policyLocality.turnLocalCandidateMessageIds as string[]
+  // Check policy decision for compaction instructions
+  const policyObj = asObject(ctx.metadata?.policy);
+  const policyDecision = asObject(policyObj?.decisions);
+  const policyCompaction = asObject(policyDecision?.compaction);
+  const compactionInstructions = Array.isArray(policyCompaction?.instructions)
+    ? (policyCompaction.instructions as Array<{ strategy: string; segmentIds: string[]; parameters?: Record<string, unknown> }>)
     : [];
+
+  // Filter for turn_local_evidence_compaction strategy
+  const turnLocalInstructions = compactionInstructions.filter(
+    (instr) => instr.strategy === "turn_local_evidence_compaction",
+  );
+
+  // Check policy delay turns from locality decision
+  const policyLocality = asObject(policyDecision?.locality);
   const policyDelayTurns = typeof policyLocality?.turnLocalDelayTurns === "number"
     ? policyLocality.turnLocalDelayTurns
     : 0;
 
   // If policy specifies a delay, check if enough turns have passed
   if (policyDelayTurns > 0) {
-    const completedTurns = ctx.metadata?.policy?.state?.completedTurns as number | undefined;
+    const policyState = asObject(policyObj?.state);
+    const completedTurns = typeof policyState?.completedTurns === "number"
+      ? policyState.completedTurns
+      : undefined;
     if (completedTurns === undefined || completedTurns < policyDelayTurns) {
       // Not enough turns have passed yet, skip compaction this turn
       return { turnCtx: ctx, changed: false, compactedCount: 0, archives: [] };
     }
   }
 
-  const candidates = pickTurnLocalCandidates(ctx, turnLocalCandidateIds.length > 0 ? turnLocalCandidateIds : undefined);
-  if (candidates.length === 0) {
-    debugLog(`No candidates found. reads/writes may not match pattern.`);
+  // If no instructions from policy, skip
+  if (turnLocalInstructions.length === 0) {
+    debugLog(`No compaction instructions from policy`);
     return { turnCtx: ctx, changed: false, compactedCount: 0, archives: [] };
   }
 
-  debugLog(`Found ${candidates.length} candidates for turn-local compaction`);
+  // Build segment map from instructions
+  const segmentIdsToCompact = new Set<string>();
+  for (const instr of turnLocalInstructions) {
+    for (const id of instr.segmentIds) {
+      segmentIdsToCompact.add(id);
+    }
+  }
 
-  const archiveDir = cfg.turnLocalCompaction?.archiveDir ?? defaultArchiveDir(ctx.sessionId);
+  debugLog(`Found ${segmentIdsToCompact.size} segments to compact from policy instructions`);
+
+  const workspaceDir = typeof ctx.metadata?.workspaceDir === "string" ? ctx.metadata.workspaceDir : undefined;
+  const archiveDir = cfg.turnLocalCompaction?.archiveDir ?? defaultArchiveDir(ctx.sessionId, workspaceDir);
   const timestamp = Date.now();
   const archives: string[] = [];
-  const replacements = new Map<number, string>();
+  const segmentReplacements = new Map<string, { replacement: string; segmentId: string }>();
 
-  for (let idx = 0; idx < candidates.length; idx += 1) {
-    const candidate = candidates[idx];
-    const fileName = `${timestamp}-${String(idx + 1).padStart(3, "0")}-${sanitizePathPart(candidate.sourceSegmentId)}.json`;
+  for (const [idx, instr] of turnLocalInstructions.entries()) {
+    const segmentId = instr.segmentIds[0];
+    if (!segmentId) continue;
+
+    const segment = ctx.segments.find((s) => s.id === segmentId);
+    if (!segment) continue;
+
+    const meta = asObject(segment.metadata);
+    const toolName = normalizeToolName(meta) ?? "read";
+    const dataKey = extractDataKey(meta) ?? "unknown";
+
+    const consumedBy = asObject(instr.parameters?.consumedBy);
+    const writeToolName = (consumedBy?.toolName as string) ?? "write";
+    const writePreview = clipText((consumedBy?.writePreview as string) ?? "", 320);
+
+    const fileName = `${timestamp}-${String(idx + 1).padStart(3, "0")}-${sanitizePathPart(segmentId)}.json`;
     const archivePath = join(archiveDir, fileName);
-    debugLog(`Archiving candidate ${idx + 1}/${candidates.length}: ${candidate.sourceToolName}(${candidate.sourceDataKey}) -> ${candidate.writeToolName}`);
+
+    debugLog(`Archiving ${toolName}(${dataKey}) -> ${writeToolName}`);
     debugLog(`  Archive path: ${archivePath}`);
+
     await mkdir(dirname(archivePath), { recursive: true });
     await writeFile(
       archivePath,
@@ -420,15 +482,15 @@ async function runTurnLocalEvidenceCompaction(
           schemaVersion: 1,
           kind: "turn_local_tool_result_archive",
           sessionId: ctx.sessionId,
-          sourceSegmentId: candidate.sourceSegmentId,
-          sourceToolName: candidate.sourceToolName,
-          sourceDataKey: candidate.sourceDataKey,
-          sourceText: candidate.sourceText,
-          sourceTextHash: hashText(candidate.sourceText),
+          sourceSegmentId: segmentId,
+          sourceToolName: toolName,
+          sourceDataKey: dataKey,
+          sourceText: segment.text,
+          sourceTextHash: hashText(segment.text),
           consumedBy: {
-            writeSegmentId: candidate.writeSegmentId,
-            writeToolName: candidate.writeToolName,
-            writeTextPreview: clipText(candidate.writeText, 320),
+            writeSegmentId: consumedBy?.segmentId as string ?? "unknown",
+            writeToolName: writeToolName,
+            writeTextPreview: writePreview,
           },
           archivedAt: new Date().toISOString(),
         },
@@ -437,17 +499,34 @@ async function runTurnLocalEvidenceCompaction(
       )}\n`,
       "utf8",
     );
-    replacements.set(candidate.sourceIndex, buildCompactedStub(candidate, archivePath));
+
+    const stub = buildCompactedStub(
+      {
+        sourceIndex: ctx.segments.findIndex((s) => s.id === segmentId),
+        sourceSegmentId: segmentId,
+        sourceToolName: toolName,
+        sourceDataKey: dataKey,
+        sourceText: segment.text,
+        writeIndex: ctx.segments.findIndex((s) => s.id === consumedBy?.segmentId),
+        writeSegmentId: consumedBy?.segmentId as string ?? "unknown",
+        writeToolName: writeToolName,
+        writeText: writePreview,
+      },
+      archivePath,
+    );
+
+    segmentReplacements.set(segmentId, { replacement: stub, segmentId });
     archives.push(archivePath);
   }
 
-  const nextSegments = ctx.segments.map((segment, index) => {
-    const replacement = replacements.get(index);
-    if (!replacement) return segment;
+  const nextSegments = ctx.segments.map((segment) => {
+    const entry = segmentReplacements.get(segment.id);
+    if (!entry) return segment;
+
     const metadata = asObject(segment.metadata) ?? {};
     return {
       ...segment,
-      text: replacement,
+      text: entry.replacement,
       metadata: {
         ...metadata,
         compaction: {
@@ -468,14 +547,14 @@ async function runTurnLocalEvidenceCompaction(
         compaction: {
           ...(asObject(ctx.metadata?.compaction) ?? {}),
           turnLocal: {
-            compactedCount: candidates.length,
+            compactedCount: segmentReplacements.size,
             archivePaths: archives,
           },
         },
       },
     },
     changed: true,
-    compactedCount: candidates.length,
+    compactedCount: segmentReplacements.size,
     archives,
   };
 }
@@ -667,13 +746,18 @@ export function createCompactionModule(cfg: CompactionModuleConfig = {}): Runtim
   return {
     name: "module-compaction",
     async beforeCall(ctx) {
+      // Run compaction strategies:
+      // Turn-local evidence compaction - compact reads consumed by writes
       const turnLocal = await runTurnLocalEvidenceCompaction(ctx, cfg);
+
+      // Return the final context after all compaction passes
       return turnLocal.turnCtx;
     },
     async afterCall(ctx, result, runtime) {
-      // First, run turn-local compaction on the completed turn
-      // This handles the case where read and write happen in the same turn
+      // Run turn-based compaction:
+      // Turn-local evidence compaction
       const turnLocal = await runTurnLocalEvidenceCompaction(ctx, cfg);
+
       const finalResult = turnLocal.changed
         ? {
             ...result,

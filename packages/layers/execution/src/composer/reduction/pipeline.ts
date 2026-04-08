@@ -1,5 +1,5 @@
-import type { RuntimeTurnContext, RuntimeTurnResult } from "@ecoclaw/kernel";
-import { resolveReductionPass } from "./registry.js";
+import type { RuntimeStateStore, RuntimeTurnContext, RuntimeTurnResult } from "@ecoclaw/kernel";
+import { resolveReductionPass, execOutputTruncationBeforeCallPass } from "./registry.js";
 import type {
   ReductionMetadata,
   ReductionModuleConfig,
@@ -13,6 +13,7 @@ export type RunReductionBeforeCallParams = {
   turnCtx: RuntimeTurnContext;
   passes: ReductionPassSpec[];
   registry?: ReductionPassRegistry;
+  stateStore?: RuntimeStateStore;
 };
 
 export type RunReductionAfterCallParams = {
@@ -36,6 +37,14 @@ export function resolveReductionPasses(
 
   return [
     {
+      id: "repeated_read_dedup",
+      phase: "before_call",
+      target: "context_segment",
+      options: {
+        enabled: true,
+      },
+    },
+    {
       id: "tool_payload_trim",
       phase: "before_call",
       target: "tool_payload",
@@ -48,6 +57,22 @@ export function resolveReductionPasses(
       id: "html_slimming",
       phase: "before_call",
       target: "structured_payload",
+      options: {
+        enabled: true,
+      },
+    },
+    {
+      id: "exec_output_truncation",
+      phase: "before_call",
+      target: "context_segment",
+      options: {
+        enabled: true,
+      },
+    },
+    {
+      id: "agents_startup_optimization",
+      phase: "before_call",
+      target: "context_segment",
       options: {
         enabled: true,
       },
@@ -84,6 +109,38 @@ export function resolveReductionPasses(
         embeddingRequestTimeoutMs: cfg.semanticLlmlingua2?.embedding?.requestTimeoutMs ?? 30000,
       },
     },
+    {
+      id: "format_cleaning",
+      phase: "after_call",
+      target: "result_content",
+      options: {
+        enabled: true,
+      },
+    },
+    {
+      id: "path_truncation",
+      phase: "after_call",
+      target: "result_content",
+      options: {
+        enabled: true,
+      },
+    },
+    {
+      id: "image_downsample",
+      phase: "after_call",
+      target: "result_content",
+      options: {
+        enabled: true,
+      },
+    },
+    {
+      id: "line_number_strip",
+      phase: "after_call",
+      target: "result_content",
+      options: {
+        enabled: true,
+      },
+    },
   ];
 }
 
@@ -106,7 +163,7 @@ export function readReductionMetadata(metadata?: Record<string, unknown>): Reduc
 export async function runReductionBeforeCall(
   params: RunReductionBeforeCallParams,
 ): Promise<{ turnCtx: RuntimeTurnContext; report: ReductionReportEntry[] }> {
-  const { turnCtx, passes, registry } = params;
+  const { turnCtx, passes, registry, stateStore } = params;
   let currentCtx: RuntimeTurnContext = {
     ...turnCtx,
     segments: turnCtx.segments.map((segment) => ({ ...segment })),
@@ -129,7 +186,11 @@ export async function runReductionBeforeCall(
       continue;
     }
 
-    const handler = resolveReductionPass(spec.id, registry);
+    // Special handler for exec_output_truncation beforeCall
+    const handler = spec.id === "exec_output_truncation"
+      ? execOutputTruncationBeforeCallPass
+      : resolveReductionPass(spec.id, registry);
+
     if (!handler?.beforeCall) {
       report.push({
         id: spec.id,
@@ -147,6 +208,7 @@ export async function runReductionBeforeCall(
     const outcome = await handler.beforeCall({
       turnCtx: currentCtx,
       spec,
+      stateStore,
     });
 
     if (outcome.turnCtx) {

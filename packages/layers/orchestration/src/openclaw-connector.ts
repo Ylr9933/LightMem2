@@ -741,6 +741,7 @@ export function createOpenClawConnector(cfg: OpenClawConnectorConfig) {
           physicalSessionId,
           observationSegmentCount: observationSegments.length,
           ...(contextView ? { contextView } : {}),
+          ...(stateStore ? { stateStore } : {}),
         },
       };
       try {

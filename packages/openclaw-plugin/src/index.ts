@@ -4,9 +4,7 @@ import { createContextStateModule } from "@ecoclaw/layer-context";
 import {
   createStabilizerModule,
   createReductionModule,
-  createSummaryModule,
   createCompactionModule,
-  createHandoffModule,
 } from "@ecoclaw/layer-execution";
 import { createOpenClawConnector } from "@ecoclaw/layer-orchestration";
 import { anthropicAdapter } from "@ecoclaw/provider-anthropic";
@@ -39,10 +37,8 @@ type EcoClawPluginConfig = {
   modules?: {
     stabilizer?: boolean;
     policy?: boolean;
-    summary?: boolean;
     reduction?: boolean;
     compaction?: boolean;
-    handoff?: boolean;
     decisionLedger?: boolean;
   };
   compaction?: {
@@ -382,10 +378,8 @@ function normalizeConfig(raw: unknown): Required<Omit<EcoClawPluginConfig, "prox
     modules: {
       stabilizer: modules.stabilizer ?? true,
       policy: modules.policy ?? true,
-      summary: modules.summary ?? true,
       reduction: modules.reduction ?? true,
       compaction: modules.compaction ?? true,
-      handoff: modules.handoff ?? true,
       decisionLedger: modules.decisionLedger ?? true,
     },
     compaction: {
@@ -533,6 +527,15 @@ function findDeveloperPromptText(input: any): string {
   return extractInputText([developer]);
 }
 
+function normalizeStableText(input: string): string {
+  return input
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, "<UUID>")
+    .replace(/\b\d{4}-\d{2}-\d{2}[T ][0-9:.+\-Z]{6,}\b/g, "<TIMESTAMP>")
+    .replace(/\b\d{10,}\b/g, "<LONGNUM>")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function computeStablePromptCacheKey(
   model: string,
   instructions: string,
@@ -540,10 +543,10 @@ function computeStablePromptCacheKey(
   tools: any,
 ): string {
   const seed = JSON.stringify({
-    v: 2,
+    v: 3,
     model: normalizeProxyModelId(model),
-    instructions: normalizeText(instructions),
-    developer: normalizeText(developerText),
+    instructions: normalizeStableText(instructions),
+    developer: normalizeStableText(developerText),
     tools: summarizeToolsFingerprint(tools),
   });
   const digest = createHash("sha256").update(seed).digest("hex").slice(0, 24);
@@ -563,8 +566,30 @@ function rewritePayloadForStablePrefix(payload: any, model: string): {
   if (Array.isArray(payload?.input)) {
     payload.input = payload.input.map((item: any) => {
       if (!item || typeof item !== "object") return item;
-      if (String(item.role ?? "") !== "user") return item;
+      const role = String(item.role ?? "");
+      if (role !== "user" && role !== "system") return item;
       if (item.__ecoclaw_replay_raw === true) return item;
+
+      if (role === "system") {
+        // Normalize system content: workspace paths, agent IDs, timestamps
+        const contentText = extractInputText(item.content);
+        const rewrite = rewriteRootPromptForStablePrefix(contentText);
+        if (!rewrite.changed) return item;
+        senderMetadataBlocksBefore += countSenderMetadataBlocks(item.content);
+        userContentRewrites += 1;
+        // Replace content with normalized text (handles both string and array content)
+        const newContent = typeof item.content === "string"
+          ? rewrite.forwardedPromptText
+          : { ...item.content, text: rewrite.forwardedPromptText };
+        const nextItem = {
+          ...item,
+          content: newContent,
+        };
+        senderMetadataBlocksAfter += countSenderMetadataBlocks(nextItem.content);
+        return nextItem;
+      }
+
+      // User content: normalize sender metadata blocks
       senderMetadataBlocksBefore += countSenderMetadataBlocks(item.content);
       const normalized = normalizeContentValue(item.content);
       if (!normalized.changed) {
@@ -932,8 +957,11 @@ async function detectUpstreamConfig(logger: Required<PluginLogger>): Promise<Ups
     const raw = await readFile(cfgPath, "utf8");
     const parsed = JSON.parse(raw) as any;
     const providers = parsed?.models?.providers ?? {};
-    const preferred = ["gmn", "openai", "dica", "qwen-portal", "bailian"];
-    const selectedProvider = preferred.find((id) => providers?.[id]?.baseUrl && providers?.[id]?.apiKey) ?? Object.keys(providers)[0];
+    // tuzi/dica before gmn: gmn is openclaw's internal provider and may not support all model IDs
+    const preferred = ["tuzi", "dica", "openai", "qwen-portal", "bailian", "gmn"];
+    const selectedProvider = preferred.find((id) => providers?.[id]?.baseUrl && providers?.[id]?.apiKey)
+      ?? Object.keys(providers).find((id) => id !== "ecoclaw" && providers[id]?.baseUrl && providers[id]?.apiKey)
+      ?? Object.keys(providers)[0];
     if (!selectedProvider) return null;
     const p = providers[selectedProvider];
     const models = Array.isArray(p?.models) ? p.models : [];
@@ -1030,7 +1058,20 @@ async function startEmbeddedResponsesProxy(
   resolveTurnBinding: (userMessage: string) => RecentTurnBinding | null,
 ): Promise<{ baseUrl: string; upstream: UpstreamConfig; close: () => Promise<void> } | null> {
   if (!cfg.proxyAutostart) return null;
-  const upstream = await detectUpstreamConfig(logger);
+  let upstream: UpstreamConfig | null = null;
+  if (cfg.proxyBaseUrl && cfg.proxyApiKey) {
+    // Explicit config takes precedence over auto-detection
+    const detected = await detectUpstreamConfig(logger);
+    upstream = {
+      providerId: detected?.providerId ?? "configured",
+      baseUrl: cfg.proxyBaseUrl.replace(/\/+$/, ""),
+      apiKey: cfg.proxyApiKey,
+      models: detected?.models ?? [],
+    };
+    logger.info(`[ecoclaw] proxy using configured upstream: ${upstream.baseUrl}`);
+  } else {
+    upstream = await detectUpstreamConfig(logger);
+  }
   if (!upstream) {
     logger.warn("[ecoclaw] no upstream provider discovered; proxy disabled.");
     return null;
@@ -1102,6 +1143,31 @@ async function startEmbeddedResponsesProxy(
       logger.info(
         `[ecoclaw] proxy request model=${model || "unknown"} upstreamModel=${upstreamModel || "unknown"} instrChars=${instructions.length} cacheKey=${stableRewrite.promptCacheKey} userContentRewrites=${stableRewrite.userContentRewrites} senderBlocks=${stableRewrite.senderMetadataBlocksBefore}->${stableRewrite.senderMetadataBlocksAfter}`,
       );
+      // Always log all proxy requests to a dedicated file for debugging
+      {
+        const proxyLogPath = join(cfg.stateDir, "ecoclaw", "proxy-requests.jsonl");
+        const logRecord = {
+          at: new Date().toISOString(),
+          stage: "proxy_inbound",
+          model,
+          upstreamModel,
+          upstreamBaseUrl: upstream.baseUrl,
+          instructionsLength: instructions.length,
+          instructions: String(payload?.instructions ?? ""),
+          inputItemCount: Array.isArray(payload?.input) ? payload.input.length : -1,
+          input: payload?.input,
+          tools: payload?.tools,
+          promptCacheKey: stableRewrite.promptCacheKey,
+          developerRewritten: Boolean(rootPromptRewrite?.changed),
+          developerRewriteWorkdir: rootPromptRewrite?.workdir ?? "",
+          developerRewriteAgentId: rootPromptRewrite?.agentId ?? "",
+          manualReplayLogicalSessionId: manualReplay?.logicalSessionId ?? "",
+          manualReplayPhysicalSessionId: manualReplay?.physicalSessionId ?? "",
+          manualReplayItemCount: manualReplay?.replayItemCount ?? 0,
+        };
+        await mkdir(dirname(proxyLogPath), { recursive: true });
+        await appendFile(proxyLogPath, `${JSON.stringify(logRecord)}\n`, "utf8");
+      }
       if (cfg.debugTapProviderTraffic) {
         const debugRecord = {
           at: new Date().toISOString(),
@@ -1140,6 +1206,29 @@ async function startEmbeddedResponsesProxy(
         body: JSON.stringify(payload),
       });
       const txt = await upstreamResp.text();
+      {
+        const proxyRespLogPath = join(cfg.stateDir, "ecoclaw", "proxy-responses.jsonl");
+        let parsedResponse: any = null;
+        try {
+          parsedResponse = JSON.parse(txt);
+        } catch {}
+        const respRecord = {
+          at: new Date().toISOString(),
+          stage: "proxy_response",
+          model,
+          upstreamModel,
+          status: upstreamResp.status,
+          promptCacheKey: payload?.prompt_cache_key,
+          promptCacheRetention: payload?.prompt_cache_retention,
+          responseId: parsedResponse?.id ?? null,
+          previousResponseId: parsedResponse?.previous_response_id ?? null,
+          responsePromptCacheKey: parsedResponse?.prompt_cache_key ?? null,
+          responsePromptCacheRetention: parsedResponse?.prompt_cache_retention ?? null,
+          usage: parsedResponse?.usage ?? null,
+        };
+        await mkdir(dirname(proxyRespLogPath), { recursive: true });
+        await appendFile(proxyRespLogPath, `${JSON.stringify(respRecord)}\n`, "utf8");
+      }
       {
         const forwardedRecord = {
           at: new Date().toISOString(),
@@ -1986,6 +2075,20 @@ async function extractOpenClawPromptRoot(event: any): Promise<string> {
   return blocks.join("\n\n");
 }
 
+/**
+ * Extract workspace directory from event's systemPromptReport
+ */
+function extractWorkspaceDir(event: any): string | undefined {
+  const report =
+    event?.result?.meta?.systemPromptReport ??
+    event?.meta?.systemPromptReport ??
+    event?.systemPromptReport;
+  if (report && typeof report === "object" && typeof report.workspaceDir === "string") {
+    return report.workspaceDir;
+  }
+  return undefined;
+}
+
 function extractTurnTools(event: any): string[] {
   return extractTurnObservations(event)
     .filter((item) => item.role === "tool")
@@ -2040,25 +2143,6 @@ function createShadowRuntimeConnector(cfg: ReturnType<typeof normalizeConfig>): 
           resumePrefixPrompt: cfg.compaction.resumePrefixPrompt,
           resumePrefixPromptPath: cfg.compaction.resumePrefixPromptPath,
           turnLocalCompaction: cfg.compaction.turnLocalCompaction,
-        })
-      : null,
-    cfg.modules.summary
-      ? createSummaryModule({
-          generationMode: cfg.compaction.summaryGenerationMode,
-          fallbackToHeuristic: cfg.compaction.summaryFallbackToHeuristic,
-          summaryMaxOutputTokens: cfg.compaction.summaryMaxOutputTokens,
-          includeAssistantReply: cfg.compaction.includeAssistantReply,
-        })
-      : null,
-    cfg.modules.handoff
-      ? createHandoffModule({
-          generationMode: cfg.handoff.handoffGenerationMode,
-          fallbackToHeuristic: cfg.handoff.handoffFallbackToHeuristic,
-          handoffMaxOutputTokens: cfg.handoff.handoffMaxOutputTokens,
-          includeAssistantReply: cfg.handoff.includeAssistantReply,
-          handoffPrompt: cfg.handoff.handoffPrompt,
-          handoffPromptPath: cfg.handoff.handoffPromptPath,
-          triggerEventType: ECOCLAW_EVENT_TYPES.POLICY_HANDOFF_REQUESTED,
         })
       : null,
     cfg.modules.reduction
@@ -2132,6 +2216,7 @@ async function buildShadowTurnContext(
   const turnTools = turnObservations
     .filter((item) => item.role === "tool")
     .map((item) => item.text);
+  const workspaceDir = extractWorkspaceDir(event);
 
   return {
     sessionId: logicalSessionId,
@@ -2170,6 +2255,7 @@ async function buildShadowTurnContext(
       openclawPromptRoot: promptRoot,
       turnTools,
       turnObservations,
+      workspaceDir,
       shadowRuntime: {
         source: "openclaw-plugin.agent_end",
         observationCount: turnObservations.length,

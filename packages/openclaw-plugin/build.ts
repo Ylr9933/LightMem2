@@ -13,6 +13,10 @@ async function main() {
     sourcemap: true,
     minify: false,
     logLevel: "info",
+    logOverride: {
+      // import.meta is used as an ESM fallback; __dirname is always available in CJS.
+      "empty-import-meta": "silent",
+    },
   });
 
   const workerSrc = join(
@@ -21,6 +25,7 @@ async function main() {
     "layers",
     "execution",
     "src",
+    "composer",
     "reduction",
     "semantic-llmlingua2-worker.py",
   );

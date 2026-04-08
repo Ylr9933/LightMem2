@@ -71,11 +71,6 @@
             "default": true,
             "description": "Enable decision/policy module."
           },
-          "summary": {
-            "type": "boolean",
-            "default": true,
-            "description": "Enable summary execution module."
-          },
           "reduction": {
             "type": "boolean",
             "default": true,
@@ -84,12 +79,7 @@
           "compaction": {
             "type": "boolean",
             "default": true,
-            "description": "Enable compaction execution module."
-          },
-          "handoff": {
-            "type": "boolean",
-            "default": true,
-            "description": "Enable handoff execution module."
+            "description": "Enable compaction execution module (includes summary and handoff atomics)."
           },
           "decisionLedger": {
             "type": "boolean",

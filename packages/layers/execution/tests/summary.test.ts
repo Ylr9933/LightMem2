@@ -9,7 +9,7 @@ import {
   buildHeuristicSummaryText,
   createSummaryModule,
   generateSummaryArtifact,
-} from "../src/summary/index.js";
+} from "../src/atomic/summary/index.js";
 import { createMockRuntime, createTurnContext, createTurnResult } from "./test-utils.js";
 
 test("summary artifact only covers the provided block range", async () => {

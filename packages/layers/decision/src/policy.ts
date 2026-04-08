@@ -14,6 +14,20 @@ import {
   type PolicyLocalityConfig,
   type PolicyLocalitySignal,
 } from "./locality.js";
+import {
+  analyzeRepeatedReads,
+  analyzeToolPayloadTrim,
+  analyzeFormatSlimming,
+  analyzeExecOutputTruncation,
+  analyzeFormatCleaning,
+  analyzePathTruncation,
+  analyzeImageDownsample,
+  analyzeLineNumberStrip,
+} from "./reduction/index.js";
+import {
+  analyzeCompaction,
+  type CompactionDecision,
+} from "./compaction/index.js";
 
 export type PolicyModuleConfig = {
   localityEnabled?: boolean;
@@ -253,6 +267,8 @@ export type PolicyLocalityDecision = {
   signals: PolicyLocalitySignal[];
 };
 
+import type { ReductionInstruction, CompactionInstruction } from "./types.js";
+
 export type PolicyOnlineDecisions = {
   summary: PolicySummaryDecision;
   handoff: PolicyHandoffDecision;
@@ -260,9 +276,20 @@ export type PolicyOnlineDecisions = {
     enabled: boolean;
     beforeCallPassIds: string[];
     afterCallPassIds: string[];
+    instructions: ReductionInstruction[];
     reasons: string[];
   };
-  compaction: PolicyCompactionDecision;
+  compaction: {
+    supported: boolean;
+    enabled: boolean;
+    purpose: "checkpoint_seed";
+    requested: boolean;
+    reasons: string[];
+    cooldownActive: boolean;
+    generationMode: PolicySemanticGenerationMode;
+    arbitration: PolicySemanticArbitration;
+    instructions: CompactionInstruction[];
+  };
   locality: PolicyLocalityDecision;
   cacheHealth: PolicyCacheHealthDecision;
   semantic: PolicySemanticBudgetDecision;
@@ -321,6 +348,9 @@ type NormalizedPolicyConfig = {
   cacheHealthHitMinTokens: number;
   cacheHealthMissesToCold: number;
   cacheHealthWarmSeconds: number;
+  turnLocalCompactionEnabled: boolean;
+  turnLocalCompactionDelayTurns: number;
+  turnLocalCompactionMinChars: number;
 };
 
 type PolicyAnalysis = {
@@ -335,7 +365,9 @@ type PolicyAnalysis = {
   reductionReasons: string[];
   reductionBeforeCallPassIds: string[];
   reductionAfterCallPassIds: string[];
+  reductionInstructions: ReductionInstruction[];
   compactionReasons: string[];
+  compactionInstructions: CompactionInstruction[];
   locality: PolicyLocalityAnalysis;
   roi: PolicyOnlineRoiSnapshot;
   summaryCooldownActive: boolean;
@@ -541,6 +573,9 @@ function normalizeConfig(cfg: PolicyModuleConfig): NormalizedPolicyConfig {
     cacheHealthHitMinTokens: Math.max(0, cfg.cacheHealthHitMinTokens ?? 64),
     cacheHealthMissesToCold: Math.max(1, cfg.cacheHealthMissesToCold ?? 2),
     cacheHealthWarmSeconds: Math.max(30, cfg.cacheHealthWarmSeconds ?? 7200),
+    turnLocalCompactionEnabled: cfg.turnLocalCompactionEnabled ?? true,
+    turnLocalCompactionDelayTurns: cfg.turnLocalCompactionDelayTurns ?? 0,
+    turnLocalCompactionMinChars: cfg.turnLocalCompactionMinChars ?? 500,
   };
 }
 
@@ -616,6 +651,19 @@ function analyzePolicyBeforeBuild(
     cacheHealthMode = "uncertain";
   }
   state.cacheHealth.mode = cacheHealthMode;
+
+  // Analyze segments for reduction opportunities
+  const repeatedReadDecision = analyzeRepeatedReads(ctx.segments);
+  const toolPayloadDecision = analyzeToolPayloadTrim(ctx.segments);
+  const formatSlimmingDecision = analyzeFormatSlimming(ctx.segments);
+  const execOutputDecision = analyzeExecOutputTruncation(ctx.segments);
+  const formatCleaningDecision = analyzeFormatCleaning(ctx.segments);
+  const pathTruncationDecision = analyzePathTruncation(ctx.segments);
+  const imageDownsampleDecision = analyzeImageDownsample(ctx.segments);
+  const lineNumberStripDecision = analyzeLineNumberStrip(ctx.segments);
+
+  // Analyze segments for compaction opportunities
+  const compactionDecision = analyzeCompaction(ctx.segments);
 
   const stableTokens = estimateTokensFromChars(stableChars);
   const promptTokensEstimate = estimateTokensFromChars(promptChars);
@@ -776,6 +824,12 @@ function analyzePolicyBeforeBuild(
   const reductionAfterCallPassIds: string[] = [];
   const localityReductionReasons = collectSignalReasons(locality, "reduction");
   reductionReasons.push(...localityReductionReasons);
+  // Always enable agents_startup_optimization pass when reduction is enabled
+  // This pass modifies AGENTS.md instructions to prevent unnecessary memory file reads
+  if (config.reductionEnabled) {
+    reductionBeforeCallPassIds.push("agents_startup_optimization");
+    reductionReasons.push("agents_startup_optimization_always_enabled");
+  }
   if (
     config.reductionEnabled &&
     (reductionStats.segmentCount > 0 || localityReductionReasons.length > 0) &&
@@ -795,6 +849,102 @@ function analyzePolicyBeforeBuild(
   if (config.reductionSemanticEnabled && reductionPassRoi.semantic_llmlingua2.recommended) {
     reductionReasons.push("semantic_candidate");
     reductionAfterCallPassIds.push("semantic_llmlingua2");
+  }
+  // Add repeated read deduplication pass if repeated reads detected
+  if (
+    config.reductionEnabled &&
+    repeatedReadDecision.instructions.length > 0 &&
+    repeatedReadDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`repeated_reads_detected(count=${repeatedReadDecision.instructions.length},saved=${repeatedReadDecision.estimatedSavedChars})`);
+    reductionBeforeCallPassIds.push("repeated_read_dedup");
+  }
+
+  // Add tool payload trim pass if tool payloads detected
+  if (
+    config.reductionEnabled &&
+    toolPayloadDecision.instructions.length > 0 &&
+    toolPayloadDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`tool_payload_detected(count=${toolPayloadDecision.instructions.length},saved=${toolPayloadDecision.estimatedSavedChars})`);
+    reductionBeforeCallPassIds.push("tool_payload_trim");
+  }
+
+  // Add format slimming pass if format overhead detected
+  if (
+    config.reductionFormatSlimmingEnabled &&
+    formatSlimmingDecision.instructions.length > 0 &&
+    formatSlimmingDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`format_overhead_detected(count=${formatSlimmingDecision.instructions.length},saved=${formatSlimmingDecision.estimatedSavedChars})`);
+    reductionAfterCallPassIds.push("format_slimming");
+  }
+
+  // Add exec output truncation pass if large exec outputs detected
+  if (
+    config.reductionEnabled &&
+    execOutputDecision.instructions.length > 0 &&
+    execOutputDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`large_exec_output(count=${execOutputDecision.instructions.length},saved=${execOutputDecision.estimatedSavedChars})`);
+    reductionBeforeCallPassIds.push("exec_output_truncation");
+  }
+
+  // Add format cleaning pass if format issues detected
+  if (
+    config.reductionEnabled &&
+    formatCleaningDecision.instructions.length > 0 &&
+    formatCleaningDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`format_cleaning_needed(count=${formatCleaningDecision.instructions.length},saved=${formatCleaningDecision.estimatedSavedChars})`);
+    reductionAfterCallPassIds.push("format_cleaning");
+  }
+
+  // Add path truncation pass if long paths detected
+  if (
+    config.reductionEnabled &&
+    pathTruncationDecision.instructions.length > 0 &&
+    pathTruncationDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`long_paths_detected(count=${pathTruncationDecision.instructions.length},saved=${pathTruncationDecision.estimatedSavedChars})`);
+    reductionAfterCallPassIds.push("path_truncation");
+  }
+
+  // Add image downsample pass if large images detected
+  if (
+    config.reductionEnabled &&
+    imageDownsampleDecision.instructions.length > 0 &&
+    imageDownsampleDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`large_images_detected(count=${imageDownsampleDecision.instructions.length},saved=${imageDownsampleDecision.estimatedSavedChars})`);
+    reductionAfterCallPassIds.push("image_downsample");
+  }
+
+  // Add line number strip pass if line number prefixes detected
+  if (
+    config.reductionEnabled &&
+    lineNumberStripDecision.instructions.length > 0 &&
+    lineNumberStripDecision.estimatedSavedChars > 0
+  ) {
+    reductionReasons.push(`line_number_prefixes_detected(count=${lineNumberStripDecision.instructions.length},saved=${lineNumberStripDecision.estimatedSavedChars})`);
+    reductionAfterCallPassIds.push("line_number_strip");
+  }
+
+  // Combine all instructions from all analyzers
+  const allReductionInstructions: ReductionInstruction[] = [
+    ...repeatedReadDecision.instructions,
+    ...toolPayloadDecision.instructions,
+    ...formatSlimmingDecision.instructions,
+    ...execOutputDecision.instructions,
+    ...formatCleaningDecision.instructions,
+    ...pathTruncationDecision.instructions,
+    ...imageDownsampleDecision.instructions,
+    ...lineNumberStripDecision.instructions,
+  ].sort((a, b) => b.priority - a.priority); // Sort by priority (higher first)
+
+  // Compaction instructions from analyzer
+  if (compactionDecision.instructions.length > 0) {
+    compactionReasons.push(`compaction_candidates=${compactionDecision.instructions.length}`);
   }
 
   const summaryCooldownActive =
@@ -906,7 +1056,9 @@ function analyzePolicyBeforeBuild(
     reductionReasons: uniqueStrings(reductionReasons),
     reductionBeforeCallPassIds: uniqueStrings(reductionBeforeCallPassIds),
     reductionAfterCallPassIds: uniqueStrings(reductionAfterCallPassIds),
-    compactionReasons,
+    reductionInstructions: allReductionInstructions,
+    compactionReasons: uniqueStrings(compactionReasons),
+    compactionInstructions: compactionDecision.instructions,
     locality,
     roi,
     summaryCooldownActive,
@@ -967,6 +1119,11 @@ function buildPolicyMetadata(
       compaction: {
         enabled: config.compactionEnabled,
         cooldownTurns: config.compactionCooldownTurns,
+      },
+      turnLocal: {
+        enabled: config.turnLocalCompactionEnabled,
+        delayTurns: config.turnLocalCompactionDelayTurns,
+        minChars: config.turnLocalCompactionMinChars,
       },
       cache: {
         telemetryWindowTurns: config.cacheJitterWindowTurns,
@@ -1058,6 +1215,7 @@ function buildPolicyMetadata(
         enabled: config.reductionEnabled,
         beforeCallPassIds: analysis.reductionBeforeCallPassIds,
         afterCallPassIds: analysis.reductionAfterCallPassIds,
+        instructions: analysis.reductionInstructions,
         reasons: analysis.reductionReasons,
       },
       compaction: {
@@ -1069,6 +1227,7 @@ function buildPolicyMetadata(
         cooldownActive: analysis.compactionCooldownActive,
         generationMode: analysis.compactionGenerationMode,
         arbitration: analysis.compactionArbitration,
+        instructions: analysis.compactionInstructions,
       },
       locality: {
         enabled: config.locality.enabled,
@@ -1080,6 +1239,8 @@ function buildPolicyMetadata(
         handoffCandidateMessageIds: analysis.locality.handoffCandidateMessageIds,
         errorCandidateMessageIds: analysis.locality.errorCandidateMessageIds,
         compactionCandidateBranchIds: analysis.locality.compactionCandidateBranchIds,
+        turnLocalCandidateMessageIds: analysis.locality.turnLocalCandidateMessageIds,
+        turnLocalDelayTurns: analysis.locality.turnLocalDelayTurns,
         signals: analysis.locality.signals,
       },
       cacheHealth: {

@@ -73,7 +73,8 @@ export class FileRuntimeStateStore implements RuntimeStateStore {
     for (const [sessionId, sessionRecords] of bySession.entries()) {
       const sessionDir = this.getSessionDir(sessionId);
       const messagesPath = join(sessionDir, "messages.jsonl");
-      await mkdir(sessionDir, { recursive: true });
+      await mkdir(dirname(messagesPath), { recursive: true });
+      // Append new records to the end of the file
       const payload = `${sessionRecords.map((record) => this.safeStringify(record)).join("\n")}\n`;
       await appendFile(messagesPath, payload, "utf8");
       const latest = sessionRecords.reduce((max, record) => (record.createdAt > max ? record.createdAt : max), "");

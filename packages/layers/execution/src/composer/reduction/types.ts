@@ -1,10 +1,17 @@
-import type { RuntimeTurnContext, RuntimeTurnResult } from "@ecoclaw/kernel";
+import type { ContextSegment, RuntimeTurnContext, RuntimeTurnResult, RuntimeStateStore } from "@ecoclaw/kernel";
 
 export type BuiltinReductionPassId =
   | "tool_payload_trim"
   | "html_slimming"
   | "format_slimming"
-  | "semantic_llmlingua2";
+  | "semantic_llmlingua2"
+  | "exec_output_truncation"
+  | "repeated_read_dedup"
+  | "format_cleaning"
+  | "path_truncation"
+  | "image_downsample"
+  | "line_number_strip"
+  | "agents_startup_optimization";
 
 export type ReductionPassId = BuiltinReductionPassId | (string & {});
 export type ReductionPhase = "before_call" | "after_call";
@@ -27,6 +34,7 @@ export type ReductionPassSpec = {
 export type ReductionBeforeCallContext = {
   turnCtx: RuntimeTurnContext;
   spec: ReductionPassSpec;
+  stateStore?: RuntimeStateStore;
 };
 
 export type ReductionBeforeCallOutcome = {
@@ -115,6 +123,7 @@ export type ReductionMetadata = {
 export type ReductionModuleConfig = {
   passes?: ReductionPassSpec[];
   registry?: ReductionPassRegistry;
+  stateStore?: RuntimeStateStore;
   maxToolChars?: number;
   strategy?: "rule" | "llmlingua2";
   semanticLlmlingua2?: SemanticLlmlingua2Config;
