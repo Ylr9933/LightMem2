@@ -2,7 +2,7 @@
 
 ## Goal
 - Not copying "Step/Task dual state machine" directly
-- Adapt to current EcoClaw architecture: OpenClaw request -> plugin/proxy -> decision metadata -> execution action
+- Adapt to the current TokenPilot runtime architecture: OpenClaw request -> plugin/proxy -> decision metadata -> execution action
 - Compaction and eviction share prefix representation layer, but decision/execution independent
 - Use decision layer properly, stop writing fake policy in plugin
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Smoke test for isolated EcoClaw gateway
+# Smoke test for an isolated TokenPilot gateway runtime
 # Sets up a local gateway with proxy for testing
 
 SRC_HOME="${SRC_HOME:-/mnt/20t/xubuqiang}"

@@ -20,7 +20,7 @@ canonical (transcript-derived durable rewritten history)
 - `seenMessageIds`: transcript ingestion ledger - records which transcript messages have been absorbed into canonical, never deleted on eviction
 - `canonical.messages`: current durable history view - can be modified by eviction
 
-## memory_fault_recover vs eviction/reduction
+## Recovery vs Reduction vs Eviction
 
 Two different mechanisms:
 - **Recovery**: Should NOT go through reduction again, but can be evicted with whole task
@@ -38,14 +38,8 @@ Two different mechanisms:
 - `packages/layers/history/` - Registry and raw semantic turn persistence
 - `packages/openclaw-plugin/` - Plugin implementation
 
-Current refactor status:
+Related architecture notes:
+
+- [canonical-design.md](./canonical-design.md)
+- [plugin-semantic-grouping.md](./plugin-semantic-grouping.md)
 - [plugin-refactor-status.md](./plugin-refactor-status.md)
-
-## PICHAY Reference (from old design)
-
-PICHAY was an earlier design with some concepts still relevant:
-
-1. **Tool Definition Stubs**: Replace large JSON Schema with small stubs when tool unused
-2. **Retrieval Handles/Tombstones**: Text markers for evicted content `[Paged out: Read /path (X bytes, Y lines). Re-read if needed.]`
-3. **Pressure-aware hint injection**: Inject warning when context fills to 60K-100K tokens
-4. **Fault-driven pinning**: On fault (re-read same hash), pin the file for session
