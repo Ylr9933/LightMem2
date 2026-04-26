@@ -1,4 +1,4 @@
-# OpenClaw Plugin
+# TokenPilot OpenClaw Plugin
 
 This package contains the live OpenClaw plugin runtime used by the project.
 
@@ -106,7 +106,8 @@ node --import tsx --test src/**/*.test.ts
 
 The package still contains a small release-helper surface under
 `packages/openclaw-plugin/scripts/`. Benchmarking and evaluation flows should
-live outside this package.
+stay outside this package and eventually live under the top-level
+`experiments/` tree.
 
 Script inventory:
 

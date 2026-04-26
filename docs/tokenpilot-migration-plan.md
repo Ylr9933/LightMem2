@@ -19,6 +19,27 @@ The most important constraint is continuity:
 - existing OpenClaw plugin installs must not silently break
 - old result paths and old logs must remain interpretable
 
+## Rename Boundary Rule
+
+Treat renaming as two separate layers:
+
+1. brand layer
+2. runtime/internal identifier layer
+
+Brand-layer changes are expected to happen more than once. Runtime/internal
+identifier changes should be rare.
+
+This means:
+
+- README titles, repository names, documentation headings, figure labels, and
+  benchmark writeups may change again later
+- runtime ids such as `ecoclaw`, `ecoclaw-context`, `ecoclaw/*`,
+  `ECOCLAW_*`, and `~/.openclaw/ecoclaw-plugin-state` should stay stable until
+  there is a dedicated compatibility migration
+
+If a later rename is needed, repeat the brand-layer process first. Do not start
+with runtime/global replacement.
+
 ## Migration Strategy
 
 The migration should happen in four phases.
@@ -113,7 +134,7 @@ Target direction:
 
 Current recommendation:
 
-- do not move `EcoClaw-Bench` immediately
+- do not move the current benchmark harness immediately
 - first stabilize the brand rename in the main repository
 - then migrate benchmark assets once path assumptions are documented
 
@@ -128,6 +149,33 @@ The following runtime invariants must remain valid throughout the transition:
 5. benchmark continual mode still accumulates context across tasks
 6. benchmark `new_session` tasks still evaluate correctly
 7. judge runs do not mutate global runtime state in a way that triggers reload loops
+
+## Rename Pitfalls Already Observed
+
+The following pitfalls have already appeared during the current transition and
+should be treated as reusable check items if the project is renamed again.
+
+1. brand strings and runtime ids are not the same thing
+   - changing display names is low risk
+   - changing plugin id / provider prefix / context engine id is not
+
+2. benchmark-side paths and main-repo paths drift easily
+   - docs can accidentally hardcode the current sibling repository layout
+   - future docs should describe the benchmark harness generically unless the
+     path itself is the point
+
+3. runtime config can become inconsistent if only one side of a rename changes
+   - example: disabling a plugin entry while leaving a slot pointed at its
+     context engine
+   - always re-run `openclaw config validate`
+
+4. historical result labels should not be rewritten in place
+   - old run names and result directories remain part of the experiment record
+   - prefer documenting equivalence instead of rewriting history
+
+5. benchmark entrypoints need explicit compatibility policy
+   - old script names may remain temporarily
+   - new docs should still point to the new brand
 
 ## Quick Check Matrix
 
@@ -223,7 +271,7 @@ Use the following order.
 5. add new user-facing aliases where needed
 6. validate baseline + runtime smokes
 7. only then start runtime/internal identifier migration
-8. only after that begin merging `EcoClaw-Bench` into `experiments/`
+8. only after that begin merging the benchmark harness into `experiments/`
 
 ## Compatibility Policy
 

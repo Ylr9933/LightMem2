@@ -1,5 +1,12 @@
 # Documentation
 
+This directory tracks the current TokenPilot architecture, migration notes, and
+runtime operating guidance.
+
+Benchmark execution still lives in a separate harness today. The long-term
+target is to consolidate that material under the top-level `experiments/`
+directory in this repo.
+
 ## Architecture
 
 - [Overview](architecture/overview.md) - 3-layer architecture, key distinctions
@@ -16,6 +23,7 @@
 
 - [Estimator Mode Comparison](experiments/estimator-mode.md) - Sliding window vs completed summary modes
 - [Observations Source](../exp/) - Raw observation files from experiments
+- [Experiments Placeholder](../experiments/README.md) - Planned home for future benchmark/evaluation assets
 
 ## Bug Reports
 

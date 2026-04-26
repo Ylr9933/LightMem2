@@ -48,7 +48,7 @@ The current TokenPilot runtime focuses on three mechanisms:
 * <a href='#architecture'>🏗️ Architecture</a>
 * <a href='#repository-structure'>📁 Repository Structure</a>
 * <a href='#experimental-results'>📊 Experimental Results</a>
-* <a href='#bench'>🧪 Benchmark Repository</a>
+* <a href='#bench'>🧪 Benchmark Harness</a>
 
 <span id='why-tokenpilot'/>
 
@@ -187,3 +187,19 @@ Isolated mode evaluates TokenPilot under **single-task isolated sessions**: each
 | Stability + Reduction | 86.2 | 1,502,254 | 124,363 | 1,355,264 |
 
 <span id='bench'/>
+
+## 🧪 Benchmark Harness
+
+The live benchmark and evaluation harness is currently maintained outside this
+repo. The long-term target is to consolidate that flow under:
+
+- `experiments/dataset/`
+- `experiments/scripts/`
+- `experiments/results/`
+- `experiments/save/`
+
+Until that migration is complete:
+
+- treat benchmark scripts/results as a separate harness layer
+- keep runtime/plugin changes and benchmark-path changes decoupled
+- revalidate continual and baseline smoke runs after any brand-facing rename

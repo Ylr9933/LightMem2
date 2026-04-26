@@ -10,10 +10,10 @@ packages/openclaw-plugin/scripts/
 
 The goal is to separate:
 
-- active development helpers
-- release helpers
+- active release helpers
+- removed legacy helpers
 
-from the benchmark-side experiment harness in `EcoClaw-Bench`.
+from benchmark/evaluation concerns that should stay outside the plugin package.
 
 ## Active Release Helpers
 
@@ -45,8 +45,8 @@ Reason:
 - they were no longer exposed as package scripts
 - the canonical benchmark/evaluation flow belongs outside this package
 
-The canonical benchmark/evaluation flow now belongs in `EcoClaw-Bench`, and in
-the future should move into the main repo under `experiments/`.
+The canonical benchmark/evaluation flow now belongs outside this package, and
+in the future should move into the main repo under `experiments/`.
 
 ## Cleanup Guidance
 
@@ -57,6 +57,6 @@ Near-term guidance:
 
 Later cleanup options:
 
-1. rename release helpers to align with the future `TokenPilot` brand
-2. move any remaining benchmark-like flows into the future top-level
-   `experiments/` tree
+1. rename release helpers if the package-facing command surface changes again
+2. move any remaining benchmark-like flows into the top-level `experiments/`
+   tree once the benchmark harness is consolidated

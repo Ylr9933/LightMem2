@@ -518,3 +518,35 @@ Caveat:
 
 **Verification**:
 - In run `10192`, judge setup no longer triggered gateway reload, and the main plugin config remained stable across grading.
+
+---
+
+## 16. project rename must separate brand strings from runtime ids (2026-04-26)
+
+**Severity**: Medium
+
+**Phenomenon**:
+- During the `EcoClaw -> TokenPilot` transition, user-facing docs and metadata
+  were safe to rename quickly, but runtime ids, provider prefixes, state paths,
+  and config slots were still tightly coupled to benchmark/runtime behavior.
+- A naive global rename would have mixed harmless branding edits with
+  high-risk runtime mutations.
+
+**Root Cause**:
+- The project exposes two naming layers:
+  - brand-facing names in README/docs/package metadata
+  - runtime/internal ids such as `ecoclaw`, `ecoclaw-context`, `ecoclaw/*`,
+    `ECOCLAW_*`, and `~/.openclaw/ecoclaw-plugin-state`
+- Those two layers have very different risk profiles, but were easy to confuse
+  during migration work.
+
+**Resolution**:
+- Adopt an explicit rename boundary:
+  - brand-layer renames first
+  - runtime/internal rename only under a dedicated compatibility migration
+- Add migration guidance and keep benchmark/runtime validation in the loop.
+
+**Operational Rule**:
+- If the method name changes again later, repeat the brand-layer migration
+  process first.
+- Do not start with a repo-wide runtime/global string replacement.

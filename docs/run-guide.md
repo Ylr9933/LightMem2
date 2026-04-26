@@ -3,7 +3,11 @@
 ## Scope
 
 This file is a short runtime sanity guide for local development of the
-OpenClaw plugin. Benchmark-specific runtime setup lives in:
+OpenClaw plugin. Benchmark-specific runtime setup lives in the benchmark
+harness repository for now.
+
+The two paths below are the current local layout on this machine, not a
+stable brand-facing contract:
 
 - `/mnt/20t/xubuqiang/EcoClaw/EcoClaw-Bench/scripts/install_pinchbench_runtime.sh`
 - `/mnt/20t/xubuqiang/EcoClaw/EcoClaw-Bench/docs/pinchbench-runtime-profile.md`
@@ -118,5 +122,6 @@ When a run looks invalid, check these in order:
 4. provider registration missing
 5. trace shows unexpected request rewrite or tool-result persistence
 
-If the issue is benchmark-specific, continue in the benchmark repo rather than
-expanding this file.
+If the issue is benchmark-specific, continue in the benchmark harness rather
+than expanding this file. That flow is expected to move under the main repo
+later via `experiments/`.
