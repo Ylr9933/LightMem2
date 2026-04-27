@@ -3,8 +3,8 @@ import {
   readArchive,
   resolveArchivePathFromLookup,
   resolveRecoveryStateDir,
-} from "../execution/archive-recovery/index.js";
-import { buildRecoveryContextSafePatch, MEMORY_FAULT_RECOVER_TOOL_NAME } from "./common.js";
+} from "../../execution/archive-recovery/index.js";
+import { buildRecoveryContextSafePatch, MEMORY_FAULT_RECOVER_TOOL_NAME } from "./recovery-common.js";
 
 export function registerMemoryFaultRecoverTool(
   api: any,

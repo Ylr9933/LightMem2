@@ -4,64 +4,56 @@ import {
   runReductionBeforeCall as runLayerReductionBeforeCall,
   runReductionAfterCall as runLayerReductionAfterCall,
 } from "./execution/reduction/pipeline.js";
-import {
-  archiveContent,
-  buildRecoveryHint,
-} from "./execution/archive-recovery/index.js";
 import { createPolicyModule } from "../../layers/decision/src/policy.js";
 import {
-  prependTextToContent,
-  type RootPromptRewrite,
-  rewriteRootPromptForStablePrefix,
-} from "./root-prompt-stabilizer.js";
-import {
+  applyProxyReductionToInput,
   applyLayeredReductionAfterCall,
   applyLayeredReductionAfterCallToSse,
-  isSseContentType,
-  type ProxyAfterCallReductionResult,
-} from "./proxy/after-call-reduction.js";
-import {
-  applyProxyReductionToInput,
-  type ProxyReductionResult,
-} from "./proxy/before-call-reduction.js";
-import { buildLayeredReductionContext } from "./proxy/reduction-context.js";
-import {
-  isReductionPassEnabled,
-  loadOrderedTurnAnchors,
-  loadSegmentAnchorByCallId,
-} from "./proxy/reduction-helpers.js";
-import {
+  buildLayeredReductionContext,
   estimatePayloadInputChars,
   extractInputText,
   findDeveloperAndPrimaryUser,
+  isReductionPassEnabled,
+  isSseContentType,
+  loadOrderedTurnAnchors,
+  loadSegmentAnchorByCallId,
   normalizeText,
   normalizeTurnBindingMessage,
+  prependTextToContent,
   rewritePayloadForStablePrefix,
-} from "./proxy/stable-prefix.js";
+  rewriteRootPromptForStablePrefix,
+  type ProxyAfterCallReductionResult,
+  type ProxyReductionResult,
+  type RootPromptRewrite,
+} from "./context-stack/request-preprocessing.js";
 import {
-  detectUpstreamConfig,
-  ensureExplicitProxyModelsInConfig,
-  normalizeProxyModelId,
-  requestUpstreamResponses,
-  type UpstreamConfig,
-  type UpstreamHttpResponse,
-} from "./proxy/upstream.js";
+  extractTurnObservations,
+  inferObservationPayloadKind,
+  readTranscriptEntriesForSession,
+  syncRawSemanticTurnsFromTranscript,
+  transcriptMessageStableId,
+} from "./context-stack/page-out.js";
 import {
-  appendJsonl,
-  appendForwardedInputDump,
-  appendReductionPassTrace,
-  appendTaskStateTrace,
-} from "./trace/io.js";
-import { applyToolResultPersistPolicy } from "./tool-results/persist.js";
-import { maybeRegisterProxyProvider } from "./proxy/provider.js";
-import { registerMemoryFaultRecoverTool } from "./recovery/tool.js";
-import { installLlmHookTap } from "./trace/hooks.js";
+  MEMORY_FAULT_RECOVER_TOOL_NAME,
+  archiveContent,
+  buildRecoveryHint,
+  injectMemoryFaultProtocolInstructions,
+  registerMemoryFaultRecoverTool,
+  stripInternalPayloadMarkers,
+} from "./context-stack/page-in.js";
 import {
+  PluginRuntimeConfig,
+  PluginLogger,
   applyBeforeToolCallDefaults,
+  applyPolicyBeforeCall,
+  asRecord,
+  buildPolicyModuleConfigFromPluginConfig,
   canonicalMessageTaskIds,
   contentToText,
+  detectUpstreamConfig,
   dedupeStrings,
   ensureContextSafeDetails,
+  extractPathLike,
   extractItemText,
   extractLastUserMessage,
   extractOpenClawSessionId,
@@ -69,38 +61,29 @@ import {
   extractToolMessageText,
   findLastUserItem,
   hookOn,
+  installLlmHookTap,
   isToolResultLikeMessage,
   makeLogger,
   messageToolCallId,
-} from "./runtime/helpers.js";
-import {
-  extractTurnObservations,
-  inferObservationPayloadKind,
-  readTranscriptEntriesForSession,
-  syncRawSemanticTurnsFromTranscript,
-  transcriptMessageStableId,
-} from "./transcript/sync.js";
-import {
-  contextSafeRecovery as importedContextSafeRecovery,
-  hasRecoveryMarker as importedHasRecoveryMarker,
-  MEMORY_FAULT_RECOVER_TOOL_NAME,
-} from "./recovery/common.js";
-import {
-  PluginRuntimeConfig,
-  PluginLogger,
-  applyPolicyBeforeCall,
-  asRecord,
-  buildPolicyModuleConfigFromPluginConfig,
-  extractPathLike,
+  maybeRegisterProxyProvider,
   normalizeConfig,
+  ensureExplicitProxyModelsInConfig,
+  requestUpstreamResponses,
+  createPluginContextEngine,
+  normalizeProxyModelId,
+  registerRuntime,
+  type UpstreamConfig,
+  type UpstreamHttpResponse,
   safeId,
-} from "./config.js";
-import { createPluginContextEngine } from "./context-engine.js";
-import { registerRuntime } from "./runtime/register.js";
+} from "./context-stack/integration.js";
 import {
-  injectMemoryFaultProtocolInstructions,
-  stripInternalPayloadMarkers,
-} from "./recovery/protocol.js";
+  appendJsonl,
+  appendForwardedInputDump,
+  appendReductionPassTrace,
+  appendTaskStateTrace,
+} from "./trace/io.js";
+import { applyToolResultPersistPolicy } from "./context-stack/request-preprocessing/tool-results-persist.js";
+import { contextSafeRecovery as importedContextSafeRecovery, hasRecoveryMarker as importedHasRecoveryMarker } from "./context-stack/page-in.js";
 
 
 const proxyRuntimeHelpers = {

@@ -1,10 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { installLlmHookTap } from "../trace/hooks.js";
-import { createSessionTopologyManager } from "../session/topology.js";
-import { loadRecentTurnBindingsFromState, persistRecentTurnBindingsToState } from "../session/turn-bindings.js";
-import { maybeRegisterProxyProvider } from "../proxy/provider.js";
-import { startEmbeddedResponsesProxy } from "../proxy/runtime.js";
-import { registerMemoryFaultRecoverTool } from "../recovery/tool.js";
+import {
+  createSessionTopologyManager,
+  loadRecentTurnBindingsFromState,
+  persistRecentTurnBindingsToState,
+} from "../context-stack/page-out.js";
+import {
+  registerMemoryFaultRecoverTool,
+} from "../context-stack/page-in.js";
+import {
+  installLlmHookTap,
+  maybeRegisterProxyProvider,
+  startEmbeddedResponsesProxy,
+} from "../context-stack/integration.js";
 
 function logTaskStateMonitor(
   ctx: any,

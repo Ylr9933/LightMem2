@@ -8,8 +8,8 @@ import {
   createTurnAnchor,
   loadRawSemanticTurnRecord,
   persistRawSemanticTurnRecord,
-} from "../../../layers/history/src/raw-semantic.js";
-import type { RawSemanticTurnRecord } from "../../../layers/history/src/types.js";
+} from "../../../../layers/history/src/raw-semantic.js";
+import type { RawSemanticTurnRecord } from "../../../../layers/history/src/types.js";
 
 export type TranscriptSessionRow = {
   id?: string;

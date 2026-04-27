@@ -4,7 +4,7 @@ import { join } from "node:path";
 import {
   archiveContent,
   buildRecoveryHint,
-} from "../execution/archive-recovery/index.js";
+} from "../../execution/archive-recovery/index.js";
 
 function buildToolResultPreview(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;

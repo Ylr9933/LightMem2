@@ -47,8 +47,8 @@ Current files:
 - `src/proxy/after-call-reduction.ts`
 - `src/proxy/reduction-context.ts`
 - `src/proxy/reduction-helpers.ts`
-- `src/tool-results/persist.ts`
-- `src/root-prompt-stabilizer.ts`
+- `src/context-stack/request-preprocessing/tool-results-persist.ts`
+- `src/context-stack/request-preprocessing/root-prompt-stabilizer.ts`
 
 This stage happens before content becomes durable history.
 
@@ -66,7 +66,7 @@ Responsibility:
 
 Current files:
 
-- `src/transcript/sync.ts`
+- `src/context-stack/page-out/transcript-sync.ts`
 - `src/canonical/state.ts`
 - `src/canonical/anchors.ts`
 - `src/canonical/rewrite.ts`
@@ -87,9 +87,9 @@ Responsibility:
 
 Current files:
 
-- `src/recovery/common.ts`
-- `src/recovery/protocol.ts`
-- `src/recovery/tool.ts`
+- `src/context-stack/page-in/recovery-common.ts`
+- `src/context-stack/page-in/recovery-protocol.ts`
+- `src/context-stack/page-in/recovery-tool.ts`
 - `src/execution/archive-recovery/*`
 
 This stage rehydrates content after it has been paged out.
@@ -124,17 +124,15 @@ state is a clearer semantic entry surface.
 
 Add semantic entrypoints without moving the underlying files yet.
 
-Possible target shape:
+Current target shape:
 
 ```text
 src/
-  request-preprocessing/
-    index.ts
-  page-out/
-    index.ts
-  page-in/
-    index.ts
-  integration/
+  context-stack/
+    request-preprocessing.ts
+    page-out.ts
+    page-in.ts
+    integration.ts
     index.ts
 ```
 
@@ -157,10 +155,8 @@ Move only the most semantically obvious outliers.
 
 Likely first candidates:
 
-- `src/tool-results/persist.ts`
-  - could eventually sit under `request-preprocessing/`
-- `src/transcript/sync.ts`
-  - could eventually sit under `page-out/`
+- `src/context-stack/request-preprocessing/tool-results-persist.ts`
+- `src/context-stack/page-out/transcript-sync.ts`
 
 Benefits:
 
