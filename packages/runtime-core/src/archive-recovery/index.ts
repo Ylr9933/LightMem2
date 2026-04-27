@@ -186,3 +186,5 @@ export async function resolveArchivePathFromLookup(
 export function resolveRecoveryStateDir(stateDir?: string): string {
   return stateDir ?? defaultPluginStateDir();
 }
+
+export * from "./tool-result-persist.js";

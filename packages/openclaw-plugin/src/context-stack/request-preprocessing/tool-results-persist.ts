@@ -1,89 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import {
-  buildArchiveLocation,
-  buildRecoveryHint,
-  hashText,
+  planToolResultPersistence,
 } from "@ecoclaw/runtime-core";
-
-function buildToolResultPreview(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}\n\n[ecoclaw preview truncated]`;
-}
-
-function toolInlineLimit(toolName: string): number {
-  if (toolName === "read") return 12_000;
-  if (toolName === "exec" || toolName === "bash" || toolName === "web_fetch") return 4_000;
-  return 8_000;
-}
-
-
-function updateArchiveLookupSync(
-  dataKey: string,
-  archivePath: string,
-  archiveDir: string,
-): void {
-  const keyDir = join(archiveDir, "keys");
-  const keyPath = join(keyDir, `${hashText(dataKey)}.json`);
-  mkdirSync(keyDir, { recursive: true });
-  writeFileSync(
-    keyPath,
-    JSON.stringify({ dataKey, archivePath }, null, 2),
-    "utf8",
-  );
-
-  const lookupPath = join(archiveDir, "key-lookup.json");
-  let lookup: Record<string, string> = {};
-  try {
-    lookup = JSON.parse(readFileSync(lookupPath, "utf8")) as Record<string, string>;
-  } catch {
-    lookup = {};
-  }
-  lookup[dataKey] = archivePath;
-  writeFileSync(lookupPath, JSON.stringify(lookup, null, 2), "utf8");
-}
-
-function archiveContentSync(params: {
-  sessionId: string;
-  segmentId: string;
-  sourcePass: string;
-  toolName: string;
-  dataKey: string;
-  originalText: string;
-  archiveDir: string;
-  metadata?: Record<string, unknown>;
-}): { archivePath: string; archiveDir: string } {
-  const { archiveDir, archivePath } = buildArchiveLocation(params);
-  mkdirSync(dirname(archivePath), { recursive: true });
-  const entry = {
-    schemaVersion: 1,
-    kind: `${params.sourcePass}_archive`,
-    sessionId: params.sessionId,
-    segmentId: params.segmentId,
-    sourcePass: params.sourcePass,
-    toolName: params.toolName,
-    dataKey: params.dataKey,
-    originalText: params.originalText,
-    originalSize: params.originalText.length,
-    archivedAt: new Date().toISOString(),
-    metadata: params.metadata,
-  };
-  writeFileSync(archivePath, `${JSON.stringify(entry, null, 2)}\n`, "utf8");
-  updateArchiveLookupSync(params.dataKey, archivePath, archiveDir);
-  return { archivePath, archiveDir };
-}
-
-function resolveToolNameFromPersistEvent(event: any): string {
-  return String(
-    event?.toolName ??
-      event?.tool_name ??
-      event?.message?.toolName ??
-      event?.message?.tool_name ??
-      "",
-  ).trim().toLowerCase();
-}
 
 type PersistHelpers = {
   appendTaskStateTrace: (stateDir: string, payload: Record<string, unknown>) => Promise<void>;
@@ -104,69 +21,35 @@ export function applyToolResultPersistPolicy(
   const rawMessage = message as Record<string, unknown>;
   if (!helpers.isToolResultLikeMessage(rawMessage)) return { message: rawMessage };
 
-  const toolName = resolveToolNameFromPersistEvent(event);
   const text = helpers.extractToolMessageText(rawMessage);
-  const limit = toolInlineLimit(toolName);
-  if (text.length <= limit) {
+  const outcome = planToolResultPersistence({
+    event,
+    text,
+    stateDir: cfg.stateDir,
+    safeId: helpers.safeId,
+  });
+  if (outcome.resultMode === "inline") {
     return {
       message: {
         ...rawMessage,
         details: helpers.ensureContextSafeDetails(rawMessage.details, {
-          resultMode: "inline",
+          resultMode: outcome.resultMode,
         }),
       },
     };
   }
 
-  const digest = createHash("sha256").update(text).digest("hex").slice(0, 16);
-  const callId = String(event?.toolCallId ?? event?.tool_call_id ?? "").trim();
-  const toolPart = helpers.safeId(toolName || "tool");
-  const dataKey = `tool_result_persist:${toolPart}:${callId ? helpers.safeId(callId) : digest}`;
-
-  let outputFile: string | undefined;
-  try {
-    const archived = archiveContentSync({
-      sessionId: "proxy-session",
-      segmentId: callId || `${toolPart}-${digest}`,
-      sourcePass: "tool_result_persist",
-      toolName: toolName || "tool",
-      dataKey,
-      originalText: text,
-      archiveDir: join(cfg.stateDir, "ecoclaw", "artifacts", toolPart),
-      metadata: {
-        toolCallId: callId || undefined,
-        persistedBy: "ecoclaw.tool_result_persist",
-      },
-    });
-    outputFile = archived.archivePath;
-  } catch (err) {
-    logger.warn(`[plugin-runtime] tool_result_persist artifact write failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  const preview = buildToolResultPreview(text, limit);
-  const notice = outputFile
-    ? `[ecoclaw persisted tool_result] full output moved to: ${outputFile}`
-    : "[ecoclaw persisted tool_result] artifact write failed, using inline preview fallback";
-  const recoveryHint = outputFile
-    ? buildRecoveryHint({
-      dataKey,
-      originalSize: text.length,
-      archivePath: outputFile,
-      sourceLabel: "tool_result_persist",
-    })
-    : "";
-
   if (cfg.stateDir) {
     void helpers.appendTaskStateTrace(cfg.stateDir, {
       stage: "tool_result_persist_applied",
       sessionId: String(event?.sessionId ?? event?.session_id ?? "proxy-session"),
-      toolName: toolName || "tool",
-      toolCallId: callId || null,
-      originalChars: text.length,
-      inlineLimit: limit,
-      persisted: Boolean(outputFile),
-      outputFile: outputFile ?? null,
-      dataKey,
+      toolName: outcome.toolName || "tool",
+      toolCallId: String(event?.toolCallId ?? event?.tool_call_id ?? "").trim() || null,
+      originalChars: outcome.originalChars,
+      inlineLimit: outcome.inlineLimit,
+      persisted: Boolean(outcome.outputFile),
+      outputFile: outcome.outputFile ?? null,
+      dataKey: outcome.dataKey ?? null,
     });
   }
 
@@ -175,17 +58,17 @@ export function applyToolResultPersistPolicy(
       ...rawMessage,
       content: [{
         type: "text",
-        text: `${notice}\n\n${preview}${recoveryHint}`,
+        text: `${outcome.noticeText}\n\n${outcome.previewText}${outcome.recoveryHint}`,
       }],
       details: helpers.ensureContextSafeDetails(rawMessage.details, {
-        resultMode: outputFile ? "artifact" : "inline-fallback",
+        resultMode: outcome.resultMode,
         excludedFromContext: true,
-        outputFile,
-        dataKey,
-        originalChars: text.length,
-        previewChars: limit,
-        sourcePass: "tool_result_persist",
-        persistedBy: "ecoclaw.tool_result_persist",
+        outputFile: outcome.outputFile,
+        dataKey: outcome.dataKey,
+        originalChars: outcome.originalChars,
+        previewChars: outcome.inlineLimit,
+        sourcePass: outcome.sourcePass,
+        persistedBy: outcome.persistedBy,
       }),
     },
   };
