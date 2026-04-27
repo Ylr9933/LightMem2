@@ -203,7 +203,7 @@ ensure_ecoclaw_plugin_config() {
   local proxy_base_url="${ECOCLAW_BASE_URL:-}"
   local proxy_api_key="${ECOCLAW_API_KEY:-}"
   local proxy_port="${ECOCLAW_PROXY_PORT:-17668}"
-  local plugin_load_path="${ECOCLAW_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/ecoclaw}"
+  local plugin_load_path="${ECOCLAW_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/tokenpilot}"
   local proxy_pure_forward="${ECOCLAW_PROXY_PURE_FORWARD:-false}"
   local reduction_trigger_min_chars="${ECOCLAW_REDUCTION_TRIGGER_MIN_CHARS:-2200}"
   local reduction_max_tool_chars="${ECOCLAW_REDUCTION_MAX_TOOL_CHARS:-1200}"
@@ -229,7 +229,7 @@ ensure_ecoclaw_plugin_config() {
   local task_state_estimator_eviction_lookahead_turns="${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-3}"
   local task_state_estimator_input_mode="${ECOCLAW_TASK_STATE_ESTIMATOR_INPUT_MODE:-sliding_window}"
   if [[ ! -f "${config_path}" ]]; then
-    echo "WARN: openclaw config not found, skip ecoclaw config patch: ${config_path}" >&2
+    echo "WARN: openclaw config not found, skip plugin runtime config patch: ${config_path}" >&2
     return 0
   fi
 
@@ -294,39 +294,40 @@ plugins = cfg.setdefault("plugins", {})
 load_cfg = plugins.setdefault("load", {})
 load_cfg["paths"] = [plugin_load_path]
 entries = plugins.setdefault("entries", {})
-ecoclaw = entries.setdefault("ecoclaw", {})
-ecoclaw["enabled"] = True
+entries.pop("ecoclaw", None)
+tokenpilot = entries.setdefault("tokenpilot", {})
+tokenpilot["enabled"] = True
 slots = plugins.setdefault("slots", {})
 slots["contextEngine"] = "layered-context"
-ecoclaw_cfg = ecoclaw.setdefault("config", {})
-ecoclaw_cfg["enabled"] = True
-ecoclaw_cfg["proxyAutostart"] = True
-ecoclaw_cfg["proxyPort"] = proxy_port
-ecoclaw_cfg["proxyBaseUrl"] = proxy_base_url
+tokenpilot_cfg = tokenpilot.setdefault("config", {})
+tokenpilot_cfg["enabled"] = True
+tokenpilot_cfg["proxyAutostart"] = True
+tokenpilot_cfg["proxyPort"] = proxy_port
+tokenpilot_cfg["proxyBaseUrl"] = proxy_base_url
 if proxy_api_key:
-    ecoclaw_cfg["proxyApiKey"] = proxy_api_key
-modules = ecoclaw_cfg.setdefault("modules", {})
+    tokenpilot_cfg["proxyApiKey"] = proxy_api_key
+modules = tokenpilot_cfg.setdefault("modules", {})
 modules["stabilizer"] = True
 modules["policy"] = True
 modules["reduction"] = True
 modules["eviction"] = enable_eviction
 
-ecoclaw_cfg.pop("compaction", None)
-ecoclaw_cfg.pop("proxyMode", None)
-ecoclaw_cfg.pop("hooks", None)
-ecoclaw_cfg.pop("contextEngine", None)
-modules = ecoclaw_cfg.get("modules")
+tokenpilot_cfg.pop("compaction", None)
+tokenpilot_cfg.pop("proxyMode", None)
+tokenpilot_cfg.pop("hooks", None)
+tokenpilot_cfg.pop("contextEngine", None)
+modules = tokenpilot_cfg.get("modules")
 if isinstance(modules, dict):
     modules.pop("compaction", None)
     modules.pop("decisionLedger", None)
 
-eviction = ecoclaw_cfg.setdefault("eviction", {})
+eviction = tokenpilot_cfg.setdefault("eviction", {})
 eviction["enabled"] = enable_eviction
 eviction["policy"] = eviction_policy
 eviction["minBlockChars"] = max(16, eviction_min_block_chars)
 eviction["replacementMode"] = "drop" if eviction_replacement_mode == "drop" else "pointer_stub"
 
-reduction = ecoclaw_cfg.setdefault("reduction", {})
+reduction = tokenpilot_cfg.setdefault("reduction", {})
 reduction["engine"] = "layered"
 reduction["triggerMinChars"] = max(256, trigger_min_chars)
 reduction["maxToolChars"] = max(256, max_tool_chars)
@@ -376,7 +377,7 @@ exec_cfg = tools.setdefault("exec", {})
 exec_cfg["host"] = exec_host
 exec_cfg["security"] = exec_security
 exec_cfg["ask"] = exec_ask
-task_state_estimator = ecoclaw_cfg.setdefault("taskStateEstimator", {})
+task_state_estimator = tokenpilot_cfg.setdefault("taskStateEstimator", {})
 task_state_estimator["enabled"] = task_state_estimator_enabled
 if task_state_estimator_base_url.strip():
     task_state_estimator["baseUrl"] = task_state_estimator_base_url.strip()
@@ -400,8 +401,8 @@ with open(config_path, "w", encoding="utf-8") as f:
 print(
     "Ensured plugin runtime config:",
     f"loadPath={plugin_load_path}",
-    f"port={ecoclaw_cfg.get('proxyPort')}",
-    f"base={ecoclaw_cfg.get('proxyBaseUrl')}",
+    f"port={tokenpilot_cfg.get('proxyPort')}",
+    f"base={tokenpilot_cfg.get('proxyBaseUrl')}",
     f"engine={reduction.get('engine')}",
     f"trim={passes.get('toolPayloadTrim')}",
     f"contextEngineSlot={slots.get('contextEngine')}",
@@ -438,9 +439,11 @@ with open(config_path, "r", encoding="utf-8") as f:
 
 plugins = cfg.setdefault("plugins", {})
 plugins.setdefault("slots", {}).setdefault("contextEngine", "layered-context")
-ecoclaw_entry = plugins.setdefault("entries", {}).setdefault("ecoclaw", {})
-ecoclaw_entry["enabled"] = True
-ecoclaw_cfg = ecoclaw_entry.setdefault("config", {})
+entries = plugins.setdefault("entries", {})
+entries.pop("ecoclaw", None)
+tokenpilot_entry = entries.setdefault("tokenpilot", {})
+tokenpilot_entry["enabled"] = True
+tokenpilot_cfg = tokenpilot_entry.setdefault("config", {})
 
 allowed_top_level = {
     "enabled",
@@ -453,17 +456,17 @@ allowed_top_level = {
     "reduction",
     "taskStateEstimator",
 }
-for key in list(ecoclaw_cfg.keys()):
+for key in list(tokenpilot_cfg.keys()):
     if key not in allowed_top_level:
-        ecoclaw_cfg.pop(key, None)
+        tokenpilot_cfg.pop(key, None)
 
-ecoclaw_cfg["enabled"] = True
-ecoclaw_cfg["proxyAutostart"] = True
+tokenpilot_cfg["enabled"] = True
+tokenpilot_cfg["proxyAutostart"] = True
 
-modules = ecoclaw_cfg.get("modules")
+modules = tokenpilot_cfg.get("modules")
 if not isinstance(modules, dict):
     modules = {}
-ecoclaw_cfg["modules"] = {
+tokenpilot_cfg["modules"] = {
     "stabilizer": True,
     "policy": True,
     "reduction": True,

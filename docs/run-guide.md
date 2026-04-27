@@ -24,7 +24,7 @@ The host runtime does not load plugin source from this repo. The effective
 runtime artifact is:
 
 ```text
-~/.openclaw/extensions/ecoclaw/dist/index.js
+~/.openclaw/extensions/tokenpilot/dist/index.js
 ```
 
 A successful local build does not mean the runtime is updated.
@@ -44,11 +44,11 @@ cd /mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin
 corepack pnpm build
 
 cp dist/index.js \
-  /mnt/20t/xubuqiang/.openclaw/extensions/ecoclaw/dist/index.js
+  /mnt/20t/xubuqiang/.openclaw/extensions/tokenpilot/dist/index.js
 cp dist/index.js.map \
-  /mnt/20t/xubuqiang/.openclaw/extensions/ecoclaw/dist/index.js.map
+  /mnt/20t/xubuqiang/.openclaw/extensions/tokenpilot/dist/index.js.map
 cp openclaw.plugin.json \
-  /mnt/20t/xubuqiang/.openclaw/extensions/ecoclaw/openclaw.plugin.json
+  /mnt/20t/xubuqiang/.openclaw/extensions/tokenpilot/openclaw.plugin.json
 ```
 
 ## Verification
@@ -58,7 +58,7 @@ Byte-level check:
 ```bash
 cmp \
   /mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/dist/index.js \
-  /mnt/20t/xubuqiang/.openclaw/extensions/ecoclaw/dist/index.js
+  /mnt/20t/xubuqiang/.openclaw/extensions/tokenpilot/dist/index.js
 ```
 
 Config check:

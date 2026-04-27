@@ -1,8 +1,8 @@
-# `ecoclaw` Runtime Naming Inventory
+# Legacy `ecoclaw` Runtime Naming Inventory
 
 ## Purpose
 
-This document records the remaining live `ecoclaw` naming surface after the
+This document records the remaining legacy `ecoclaw` naming surface after the
 adapter split into:
 
 - `packages/kernel`
@@ -41,11 +41,11 @@ changed during a simple brand refresh.
 ### Plugin identity
 
 - [openclaw.plugin.json](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/openclaw.plugin.json)
-  - `id = "ecoclaw"`
+  - active id is now `tokenpilot`
 - [package.json](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/package.json)
-  - `name = "ecoclaw"`
+  - active package name is now `tokenpilot`
 - [index.ts](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/src/index.ts)
-  - runtime registration still uses `id: "ecoclaw"`
+  - runtime registration now uses `id: "tokenpilot"`
 
 ### Context-engine identity
 
@@ -57,12 +57,12 @@ changed during a simple brand refresh.
 ### Provider namespace
 
 - [proxy-provider.ts](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/src/context-stack/integration/proxy-provider.ts)
-  - provider `id: "ecoclaw"`
-  - registration of `ecoclaw/*`
+  - provider `id: "tokenpilot"`
+  - registration of `tokenpilot/*`
 - [upstream.ts](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/src/context-stack/integration/upstream.ts)
-  - mirrored model keys under `ecoclaw/<model>`
+  - mirrored model keys under `tokenpilot/<model>`
 - [README.md](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/openclaw-plugin/README.md)
-  - documented runtime model prefix `ecoclaw/<model>`
+  - documented runtime model prefix `tokenpilot/<model>`
 
 ### Environment-variable prefixes
 
@@ -125,8 +125,8 @@ This migration has already landed. The active package namespace is now:
 - [packages/runtime-core/package.json](/mnt/20t/xubuqiang/EcoClaw/EcoClaw/packages/runtime-core/package.json)
   - `@tokenpilot/runtime-core`
 
-So workspace package names are no longer part of the live `ecoclaw` runtime
-surface.
+So workspace package names are no longer part of the live legacy `ecoclaw`
+runtime surface.
 
 ## Class B: Internal Low-Risk Names
 

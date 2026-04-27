@@ -1,5 +1,5 @@
 {
-  "name": "ecoclaw",
+  "name": "tokenpilot",
   "version": "0.1.0",
   "description": "TokenPilot plugin for OpenClaw: routing hooks and token-efficiency runtime controls.",
   "main": "dist/index.js",
@@ -39,7 +39,6 @@
   "keywords": [
     "openclaw",
     "openclaw-plugin",
-    "ecoclaw",
     "tokenpilot",
     "llm-routing",
     "token-efficiency"

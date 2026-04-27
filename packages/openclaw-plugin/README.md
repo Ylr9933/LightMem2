@@ -27,7 +27,7 @@ npm run install:release
 This installs the packaged plugin into:
 
 ```text
-~/.openclaw/extensions/ecoclaw
+~/.openclaw/extensions/tokenpilot
 ```
 
 Development-style install should use source build + runtime sync instead of
@@ -66,7 +66,7 @@ tokenpilot/gpt-5.4-mini
 
 ## Runtime State
 
-Default state directory:
+Default state directory currently remains:
 
 ```text
 $HOME/.openclaw/ecoclaw-plugin-state/ecoclaw/

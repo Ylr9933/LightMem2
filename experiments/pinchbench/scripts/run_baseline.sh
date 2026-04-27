@@ -93,8 +93,9 @@ obj = json.loads(config_path.read_text(encoding="utf-8"))
 
 plugins = obj.setdefault("plugins", {})
 entries = plugins.setdefault("entries", {})
+entries.pop("ecoclaw", None)
 slots = plugins.setdefault("slots", {})
-eco = entries.setdefault("ecoclaw", {})
+eco = entries.setdefault("tokenpilot", {})
 eco["enabled"] = False
 slots["contextEngine"] = "legacy"
 

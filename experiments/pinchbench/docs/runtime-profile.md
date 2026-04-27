@@ -16,7 +16,7 @@ as:
 
 The current shared runtime profile installs:
 
-- OpenClaw extension id: `ecoclaw`
+- OpenClaw extension id: `tokenpilot`
 - context engine slot: `layered-context`
 - provider prefix: `tokenpilot/*`
 - extra plugin tool: `memory_fault_recover`
@@ -98,7 +98,7 @@ bash /mnt/20t/xubuqiang/EcoClaw/EcoClaw-Bench/scripts/install_pinchbench_runtime
 That installer currently:
 
 1. builds the local plugin used by the experiment runs
-2. syncs it into `~/.openclaw/extensions/ecoclaw/`
+2. syncs it into `~/.openclaw/extensions/tokenpilot/`
 3. patches `~/.openclaw/openclaw.json` to the shared PinchBench runtime profile
 4. installs the shared exec allowlist
 5. validates the resulting host-runtime config

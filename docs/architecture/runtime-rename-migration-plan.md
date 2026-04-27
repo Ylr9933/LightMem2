@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define how to migrate the remaining `ecoclaw` runtime identifiers without
+Define how to migrate the remaining legacy `ecoclaw` runtime identifiers without
 breaking:
 
 - installed OpenClaw plugin runtimes
@@ -30,9 +30,9 @@ It does not cover README or documentation-only wording.
 
 ### Plugin/runtime ids
 
-- plugin id: `ecoclaw`
+- plugin id: `tokenpilot`
 - context-engine id: `layered-context`
-- provider namespace: `ecoclaw/*`
+- provider namespace: `tokenpilot/*`
 
 ### Environment variables
 
@@ -139,25 +139,17 @@ Only after all earlier phases are stable:
 
 ### Provider prefix
 
-If OpenClaw provider registration supports multiple ids:
+Provider namespace migration has already landed:
 
-- register both `ecoclaw/*` and `tokenpilot/*`
-
-If not:
-
-- keep runtime registration as `ecoclaw/*`
-- only introduce `tokenpilot/*` later with a host-specific migration
+- runtime registration now uses `tokenpilot/*`
+- legacy `ecoclaw/*` handling is only kept in normalization paths where needed
 
 ### Context engine
 
-Preferred:
+Context-engine slot migration has already landed:
 
-- support both `ecoclaw-context` and `layered-context`
-
-Fallback:
-
-- prefer `layered-context` as the neutral slot name
-- keep `ecoclaw-context` compatibility only if host/runtime validation shows it is still needed
+- runtime registration now uses `layered-context`
+- benchmark/runtime config patchers now write `layered-context`
 
 ### Environment variables
 

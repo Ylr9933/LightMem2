@@ -140,7 +140,7 @@ const __testHooks = {
 };
 
 module.exports = {
-  id: "ecoclaw",
+  id: "tokenpilot",
   name: "TokenPilot Runtime Optimizer",
   __testHooks,
 

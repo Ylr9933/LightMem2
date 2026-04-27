@@ -36,9 +36,9 @@ This means:
 
 - README titles, repository names, documentation headings, figure labels, and
   benchmark writeups may change again later
-- runtime ids such as `ecoclaw`, `ecoclaw-context`, `ecoclaw/*`,
-  `ECOCLAW_*`, and `~/.openclaw/ecoclaw-plugin-state` should stay stable until
-  there is a dedicated compatibility migration
+- persisted/runtime ids such as `ECOCLAW_*`,
+  `~/.openclaw/ecoclaw-plugin-state`, protocol markers, and archive path
+  basenames should stay stable until there is a dedicated compatibility migration
 
 If a later rename is needed, repeat the brand-layer process first. Do not start
 with runtime/global replacement.
@@ -100,9 +100,9 @@ This phase changes code-level and runtime identifiers.
 
 Scope:
 
-- plugin id: `ecoclaw`
-- context engine: `ecoclaw-context`
-- provider prefix: `ecoclaw/*`
+- plugin id: `tokenpilot`
+- context engine: `layered-context`
+- provider prefix: `tokenpilot/*`
 - env vars: `ECOCLAW_*`
 - default result labels
 - log prefixes
@@ -120,7 +120,7 @@ Rules:
 Example:
 
 - support `TOKENPILOT_*` with fallback to `ECOCLAW_*`
-- support `tokenpilot-context` only after install/runtime config patches are ready
+- prefer neutral runtime ids such as `layered-context` over new brand-bound ids
 
 ### Phase 4: Repository Consolidation
 

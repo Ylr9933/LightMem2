@@ -10,7 +10,8 @@ export XDG_CONFIG_HOME="${HOME}/.config"
 mkdir -p "${XDG_CACHE_HOME}" "${XDG_CONFIG_HOME}"
 CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-$HOME/.openclaw/openclaw.json}"
 DEV_PLUGIN_PATH="${PLUGIN_DIR}"
-INSTALLED_PLUGIN_PATH="${HOME}/.openclaw/extensions/ecoclaw"
+INSTALLED_PLUGIN_PATH="${HOME}/.openclaw/extensions/tokenpilot"
+LEGACY_INSTALLED_PLUGIN_PATH="${HOME}/.openclaw/extensions/ecoclaw"
 
 sanitize_plugin_config() {
   if [[ ! -f "${CONFIG_PATH}" ]]; then
@@ -19,9 +20,9 @@ sanitize_plugin_config() {
 
   if command -v jq >/dev/null 2>&1; then
   tmp_file="$(mktemp)"
-    jq --arg dev_path "${DEV_PLUGIN_PATH}" --arg installed_path "${INSTALLED_PLUGIN_PATH}" '
+    jq --arg dev_path "${DEV_PLUGIN_PATH}" --arg installed_path "${INSTALLED_PLUGIN_PATH}" --arg legacy_installed_path "${LEGACY_INSTALLED_PLUGIN_PATH}" '
     if .plugins.load.paths? then
-      (.plugins.load.paths |= map(select(. != $dev_path and . != $installed_path))) |
+      (.plugins.load.paths |= map(select(. != $dev_path and . != $installed_path and . != $legacy_installed_path))) |
       if ((.plugins.load.paths // []) | length) == 0 then
         del(.plugins.load)
       else
@@ -68,12 +69,13 @@ if isinstance(load_cfg, dict):
 
 allow = plugins.get("allow")
 if isinstance(allow, list):
-    plugins["allow"] = [item for item in allow if item != "ecoclaw"]
+    plugins["allow"] = [item for item in allow if item not in {"ecoclaw", "tokenpilot"}]
 
 entries = plugins.setdefault("entries", {})
-ecoclaw = entries.setdefault("ecoclaw", {})
-ecoclaw["enabled"] = True
-ecoclaw_cfg = ecoclaw.setdefault("config", {})
+entries.pop("ecoclaw", None)
+tokenpilot = entries.setdefault("tokenpilot", {})
+tokenpilot["enabled"] = True
+tokenpilot_cfg = tokenpilot.setdefault("config", {})
 
 allowed_top_level = {
     "enabled",
@@ -86,17 +88,17 @@ allowed_top_level = {
     "reduction",
     "taskStateEstimator",
 }
-for key in list(ecoclaw_cfg.keys()):
+for key in list(tokenpilot_cfg.keys()):
     if key not in allowed_top_level:
-        ecoclaw_cfg.pop(key, None)
+        tokenpilot_cfg.pop(key, None)
 
-ecoclaw_cfg["enabled"] = True
-ecoclaw_cfg["proxyAutostart"] = True
+tokenpilot_cfg["enabled"] = True
+tokenpilot_cfg["proxyAutostart"] = True
 
-modules = ecoclaw_cfg.get("modules")
+modules = tokenpilot_cfg.get("modules")
 if not isinstance(modules, dict):
     modules = {}
-ecoclaw_cfg["modules"] = {
+tokenpilot_cfg["modules"] = {
     "stabilizer": bool(modules.get("stabilizer", True)),
     "policy": bool(modules.get("policy", True)),
     "reduction": bool(modules.get("reduction", True)),
@@ -113,6 +115,9 @@ sanitize_plugin_config
 
 archive_path="$("${SCRIPT_DIR}/pack_release.sh")"
 
+if openclaw plugins info tokenpilot >/dev/null 2>&1; then
+  printf 'y\n' | openclaw plugins uninstall tokenpilot >/dev/null 2>&1 || true
+fi
 if openclaw plugins info ecoclaw >/dev/null 2>&1; then
   printf 'y\n' | openclaw plugins uninstall ecoclaw >/dev/null 2>&1 || true
 fi
