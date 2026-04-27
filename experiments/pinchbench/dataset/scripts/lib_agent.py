@@ -54,6 +54,9 @@ OPENCLAW_AGENT_LOCK_FILE = Path(
 OPENCLAW_CONFIG_PATH = Path(
     os.environ.get("OPENCLAW_CONFIG_PATH", str(Path.home() / ".openclaw" / "openclaw.json"))
 )
+OPENCLAW_AGENT_CONFIG_SETTLE_S = float(
+    os.environ.get("PINCHBENCH_OPENCLAW_AGENT_CONFIG_SETTLE_S", "4.0")
+)
 
 
 @contextmanager
@@ -289,6 +292,12 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
             logger.warning(
                 "Agent creation returned %s: %s", create_result.returncode, create_result.stderr
             )
+        if OPENCLAW_AGENT_CONFIG_SETTLE_S > 0:
+            logger.info(
+                "Waiting %.1fs for OpenClaw gateway to settle after agent config rewrite",
+                OPENCLAW_AGENT_CONFIG_SETTLE_S,
+            )
+            time.sleep(OPENCLAW_AGENT_CONFIG_SETTLE_S)
         return True
 
 
@@ -442,6 +451,55 @@ def _find_recent_session_path(agent_dir: Path, started_at: float) -> Path | None
     return max(pool, key=lambda path: path.stat().st_mtime)
 
 
+def _read_proc_starttime(pid: int) -> int | None:
+    try:
+        stat_text = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+
+    try:
+        tail = stat_text.rsplit(")", 1)[1].strip()
+        fields = tail.split()
+        return int(fields[19])
+    except (IndexError, ValueError):
+        return None
+
+
+def _is_stale_lock_file(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return False
+
+    pid = payload.get("pid")
+    starttime = payload.get("starttime")
+    if not isinstance(pid, int):
+        return False
+
+    current_starttime = _read_proc_starttime(pid)
+    if current_starttime is None:
+        return True
+    if isinstance(starttime, int) and current_starttime != starttime:
+        return True
+    return False
+
+
+def _cleanup_stale_lock_files(paths: List[Path]) -> List[Path]:
+    active: List[Path] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        if _is_stale_lock_file(path):
+            try:
+                path.unlink()
+                logger.warning("Removed stale transcript lock: %s", path)
+            except OSError:
+                active.append(path)
+            continue
+        active.append(path)
+    return active
+
+
 def _resolve_session_file_from_store(agent_id: str) -> Path | None:
     entry = _resolve_session_store_entry(agent_id)
     if not isinstance(entry, dict):
@@ -478,9 +536,10 @@ def _pending_transcript_lock_paths(agent_dir: Path, session_id: str, agent_id: s
             existing.append(path)
 
     if existing:
-        return existing
+        return _cleanup_stale_lock_files(existing)
 
-    return sorted(sessions_dir.glob("*.jsonl.lock")) if sessions_dir.exists() else []
+    fallback = sorted(sessions_dir.glob("*.jsonl.lock")) if sessions_dir.exists() else []
+    return _cleanup_stale_lock_files(fallback)
 
 
 def _load_transcript(

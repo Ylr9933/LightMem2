@@ -21,6 +21,9 @@
             "@ecoclaw/layer-history": [
                 "packages/layers/history/src/index.ts"
             ],
+            "@ecoclaw/runtime-core": [
+                "packages/runtime-core/src/index.ts"
+            ]
         },
         "types": [
             "node"

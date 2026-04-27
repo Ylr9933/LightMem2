@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { resolveReductionPasses, runReductionBeforeCall } from "../../execution/reduction/pipeline.js";
+import { resolveReductionPasses, runReductionBeforeCall } from "@ecoclaw/runtime-core";
 import type { ContextSegment } from "../../../../kernel/src/types.js";
 import type { RuntimeModule } from "../../../../kernel/src/interfaces.js";
 

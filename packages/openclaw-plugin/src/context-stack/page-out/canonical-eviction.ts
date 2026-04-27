@@ -6,7 +6,7 @@ import {
   archiveContent,
   buildRecoveryHint,
   readArchive,
-} from "../../execution/archive-recovery/index.js";
+} from "@ecoclaw/runtime-core";
 
 type RegistryLike = {
   evictableTaskIds: string[];

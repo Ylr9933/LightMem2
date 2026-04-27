@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import {
   buildArchiveLocation,
   buildRecoveryHint,
-} from "../../execution/archive-recovery/index.js";
-import { hashText } from "../../execution/archive-recovery/archive-paths.js";
+  hashText,
+} from "@ecoclaw/runtime-core";
 
 function buildToolResultPreview(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;

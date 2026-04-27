@@ -3,7 +3,7 @@ import {
   readArchive,
   resolveArchivePathFromLookup,
   resolveRecoveryStateDir,
-} from "../../execution/archive-recovery/index.js";
+} from "@ecoclaw/runtime-core";
 import { buildRecoveryContextSafePatch, MEMORY_FAULT_RECOVER_TOOL_NAME } from "./recovery-common.js";
 
 export function registerMemoryFaultRecoverTool(
