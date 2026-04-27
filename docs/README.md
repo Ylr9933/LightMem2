@@ -17,7 +17,7 @@ directory in this repo.
 - [Runtime ID Inventory](architecture/ecoclaw-runtime-id-inventory.md) - Current `ecoclaw` naming surface and migration risk classes
 - [Experiments Consolidation Plan](architecture/experiments-consolidation-plan.md) - How benchmark assets should merge into `experiments/`
 - [Runtime-Neutral Contracts Plan](architecture/runtime-neutral-contracts-plan.md) - Contract split between `kernel`, `layers`, `runtime-core`, and host adapters
-- [OpenClaw Plugin Extraction Inventory](architecture/openclaw-plugin-extraction-inventory.md) - Current boundary between adapter-only code, extracted shared logic, and mixed request-preprocessing surfaces
+- [TokenPilot OpenClaw Adapter Extraction Inventory](architecture/openclaw-plugin-extraction-inventory.md) - Current boundary between adapter-only code, extracted shared logic, and mixed request-preprocessing surfaces
 - [Runtime Rename Migration Plan](architecture/runtime-rename-migration-plan.md) - Staged compatibility plan for renaming plugin ids, provider prefixes, env vars, package names, and persisted markers
 - [Workspace Package Rename Plan](architecture/workspace-package-rename-plan.md) - Staged build migration for moving shared packages from `@ecoclaw/*` to neutral workspace names
 - [PinchBench Experiments README](../experiments/pinchbench/README.md) - Narrowed first-pass experiments merge target
@@ -47,7 +47,7 @@ directory in this repo.
 
 ## Deleted/Archived
 
-Old documentation from `EcoClaw_read_before_exe/`:
+Old documentation from the legacy pre-execution notes archive:
 - `bug.txt` - consolidated into `bug-reports/index.md`
 - `notice.txt` - integrated into `run-guide.md` (operational notes) and `bug-reports/index.md`
 - `plan.txt` - older phase plan, removed after later architecture refactors

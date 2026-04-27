@@ -132,9 +132,10 @@ Before content becomes durable history, TokenPilot can:
 
 This phase is mostly implemented in:
 
-- `packages/openclaw-plugin/src/proxy/`
-- `packages/openclaw-plugin/src/tool-results/`
-- `packages/openclaw-plugin/src/recovery/`
+- `packages/openclaw-plugin/src/context-stack/request-preprocessing/`
+- `packages/openclaw-plugin/src/context-stack/page-in/`
+- `packages/runtime-core/src/archive-recovery/`
+- `packages/runtime-core/src/reduction/`
 
 ### Phase 2: Post-history lifecycle management
 
@@ -147,10 +148,11 @@ Once transcript content has been absorbed into canonical history, TokenPilot can
 
 This phase is mostly implemented in:
 
-- `packages/openclaw-plugin/src/transcript/`
-- `packages/openclaw-plugin/src/canonical/`
+- `packages/openclaw-plugin/src/context-stack/page-out/`
+- `packages/openclaw-plugin/src/session/`
 - `packages/layers/history/`
 - `packages/layers/decision/`
+- `packages/runtime-core/src/archive-recovery/`
 
 <span id='experimental-results'/>
 

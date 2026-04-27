@@ -102,7 +102,7 @@ Files:
 - `packages/openclaw-plugin/src/context-stack/integration/proxy-runtime.ts`
 - `packages/openclaw-plugin/src/context-stack/integration/proxy-provider.ts`
 - `packages/openclaw-plugin/src/context-stack/integration/trace-hooks.ts`
-- `packages/openclaw-plugin/src/proxy/upstream.ts`
+- `packages/openclaw-plugin/src/context-stack/integration/upstream.ts`
 - `packages/openclaw-plugin/src/index.ts`
 
 Typical responsibility:

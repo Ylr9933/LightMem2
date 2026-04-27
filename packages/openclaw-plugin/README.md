@@ -1,6 +1,6 @@
-# TokenPilot OpenClaw Plugin
+# TokenPilot OpenClaw Adapter
 
-This package contains the live OpenClaw plugin runtime used by the project.
+This package contains the live OpenClaw adapter runtime used by TokenPilot.
 
 Current runtime responsibilities:
 

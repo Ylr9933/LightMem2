@@ -1,4 +1,4 @@
-# OpenClaw Plugin Extraction Inventory
+# TokenPilot OpenClaw Adapter Extraction Inventory
 
 ## Purpose
 
