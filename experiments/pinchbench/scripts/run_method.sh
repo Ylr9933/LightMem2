@@ -42,14 +42,16 @@ JUDGE_LIKE="${JUDGE:-${TOKENPILOT_JUDGE:-${ECOCLAW_JUDGE:-tokenpilot/gpt-5.4-min
 apply_model_runtime_env "${MODEL_LIKE}"
 require_method_runtime_env
 apply_runtime_env
-export ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-true}}"
-recover_stale_openclaw_config_backup
-ensure_plugin_runtime_config
-sanitize_plugin_runtime_config
-validate_openclaw_runtime_config
-ensure_openclaw_gateway_running
-sanitize_plugin_runtime_config
-validate_openclaw_runtime_config
+if [[ "${PHASE}" != "eval" ]]; then
+  export ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-true}}"
+  recover_stale_openclaw_config_backup
+  ensure_plugin_runtime_config
+  sanitize_plugin_runtime_config
+  validate_openclaw_runtime_config
+  ensure_openclaw_gateway_running
+  sanitize_plugin_runtime_config
+  validate_openclaw_runtime_config
+fi
 
 if [[ -z "${PINCHBENCH_DATASET_DIR:-}" && -d "${PINCHBENCH_ROOT}/dataset" ]]; then
   export PINCHBENCH_DATASET_DIR="${PINCHBENCH_ROOT}/dataset"

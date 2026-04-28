@@ -42,8 +42,10 @@ from lib_agent import (
     _extract_llm_calls_from_transcript,
     _extract_usage_from_transcript,
     _get_agent_store_dir,
+    _cleanup_stale_lock_files,
     _load_transcript,
     _pending_transcript_lock_paths,
+    _resolve_session_file_from_store,
     ensure_agent_exists,
     execute_openclaw_task,
     normalize_benchmark_model_id,
@@ -78,6 +80,9 @@ def _wait_for_continuous_session_unlock(agent_id: str) -> bool:
     poll_seconds = float(
         os.environ.get("PINCHBENCH_CONTINUOUS_UNLOCK_POLL_SECONDS", "2")
     )
+    stale_grace_seconds = float(
+        os.environ.get("PINCHBENCH_CONTINUOUS_UNLOCK_STALE_GRACE_SECONDS", "90")
+    )
     agent_dir = _get_agent_store_dir(agent_id)
     deadline = time.time() + timeout_seconds
     last_logged_locks: tuple[str, ...] = ()
@@ -86,6 +91,33 @@ def _wait_for_continuous_session_unlock(agent_id: str) -> bool:
         pending_locks = _pending_transcript_lock_paths(agent_dir, "", agent_id)
         if not pending_locks:
             return True
+
+        # Best-effort stale sweep in case the writer died after the previous poll.
+        pending_locks = _cleanup_stale_lock_files(pending_locks)
+        if not pending_locks:
+            logger.info("Cleared stale continual transcript locks for %s", agent_id)
+            return True
+
+        resolved_session_file = _resolve_session_file_from_store(agent_id)
+        transcript_exists = bool(resolved_session_file and resolved_session_file.exists())
+        oldest_lock_age = 0.0
+        for path in pending_locks:
+            try:
+                oldest_lock_age = max(oldest_lock_age, time.time() - path.stat().st_mtime)
+            except OSError:
+                continue
+
+        # Generate/eval is now decoupled. If the transcript is already durable and
+        # a lock lingers well past the grace window, continuing is safer than
+        # blocking the entire continual run on a stale writer lock.
+        if transcript_exists and oldest_lock_age >= stale_grace_seconds:
+            logger.warning(
+                "Proceeding past lingering continual transcript locks for %s; transcript exists and oldest lock age is %.1fs: %s",
+                agent_id,
+                oldest_lock_age,
+                [path.name for path in pending_locks],
+            )
+            return False
 
         lock_names = tuple(path.name for path in pending_locks)
         if lock_names != last_logged_locks:
@@ -1528,7 +1560,7 @@ def main():
                 unlocked = _wait_for_continuous_session_unlock(agent_id_override)
                 if not unlocked:
                     logger.warning(
-                        "Proceeding after continual unlock timeout for agent %s; subsequent tasks may fail if the prior session is still draining.",
+                        "Proceeding without a clean continual unlock for agent %s; prior session locks may still be draining or stale.",
                         agent_id_override,
                     )
             if agent_id_override and completed_jobs and not defer_continuous_grading:

@@ -1,4 +1,4 @@
-# EcoClaw (Node/TS monorepo)
+# TokenPilot (Node/TS monorepo)
 node_modules/
 dist/
 coverage/
@@ -6,6 +6,9 @@ coverage/
 *.tsbuildinfo
 packages/openclaw-plugin/.tmp/
 packages/openclaw-plugin/*.tgz
+
+experiments/pinchbench/save/
+
 packages/layers/execution/.tmp/
 packages/layers/execution/fixtures/reduction/
 

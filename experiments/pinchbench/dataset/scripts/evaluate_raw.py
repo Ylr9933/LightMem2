@@ -9,6 +9,7 @@ import argparse
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -87,6 +88,15 @@ def main() -> int:
             logger.warning("Skipping unknown task id in raw file: %s", task_id)
             continue
 
+        logger.info(
+            "Evaluating task %s (%s/%s) with judge=%s",
+            task_id,
+            idx + 1,
+            len(task_entries),
+            judge_model,
+        )
+        started_at = time.time()
+
         execution_result = {
             "agent_id": entry.get("agent_id", ""),
             "task_id": task_id,
@@ -121,6 +131,15 @@ def main() -> int:
         entry["llm_calls"] = execution_result.get("llm_calls", entry.get("llm_calls", []))
         entry["llm_models"] = execution_result.get("llm_models", entry.get("llm_models", []))
         entry["call_counts"] = call_counts
+
+        logger.info(
+            "Finished task %s (%s/%s): score=%.3f elapsed=%.1fs",
+            task_id,
+            idx + 1,
+            len(task_entries),
+            grade.score,
+            time.time() - started_at,
+        )
 
         grades_runs_by_task.setdefault(task_id, []).append(grade)
 

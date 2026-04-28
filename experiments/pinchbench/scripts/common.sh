@@ -200,40 +200,44 @@ require_method_runtime_env() {
 
 ensure_plugin_runtime_config() {
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
-  local proxy_base_url="${ECOCLAW_BASE_URL:-}"
-  local proxy_api_key="${ECOCLAW_API_KEY:-}"
-  local proxy_port="${ECOCLAW_PROXY_PORT:-17668}"
-  local plugin_load_path="${ECOCLAW_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/tokenpilot}"
-  local proxy_pure_forward="${ECOCLAW_PROXY_PURE_FORWARD:-false}"
-  local reduction_trigger_min_chars="${ECOCLAW_REDUCTION_TRIGGER_MIN_CHARS:-2200}"
-  local reduction_max_tool_chars="${ECOCLAW_REDUCTION_MAX_TOOL_CHARS:-1200}"
-  local reduction_pass_repeated_read_dedup="${ECOCLAW_REDUCTION_PASS_REPEATED_READ_DEDUP:-true}"
-  local reduction_pass_tool_payload_trim="${ECOCLAW_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-false}"
-  local reduction_pass_html_slimming="${ECOCLAW_REDUCTION_PASS_HTML_SLIMMING:-true}"
-  local reduction_pass_exec_output_truncation="${ECOCLAW_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-true}"
-  local reduction_pass_agents_startup_optimization="${ECOCLAW_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-true}"
+  local proxy_base_url="${TOKENPILOT_BASE_URL:-${ECOCLAW_BASE_URL:-}}"
+  local proxy_api_key="${TOKENPILOT_API_KEY:-${ECOCLAW_API_KEY:-}}"
+  local proxy_port="${TOKENPILOT_PROXY_PORT:-${ECOCLAW_PROXY_PORT:-17668}}"
+  local plugin_load_path="${TOKENPILOT_PLUGIN_LOAD_PATH:-${ECOCLAW_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/tokenpilot}}"
+  local proxy_pure_forward="${TOKENPILOT_PROXY_PURE_FORWARD:-${ECOCLAW_PROXY_PURE_FORWARD:-false}}"
+  local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-${ECOCLAW_ENABLE_REDUCTION:-true}}"
+  local reduction_trigger_min_chars="${TOKENPILOT_REDUCTION_TRIGGER_MIN_CHARS:-${ECOCLAW_REDUCTION_TRIGGER_MIN_CHARS:-2200}}"
+  local reduction_max_tool_chars="${TOKENPILOT_REDUCTION_MAX_TOOL_CHARS:-${ECOCLAW_REDUCTION_MAX_TOOL_CHARS:-1200}}"
+  local reduction_pass_repeated_read_dedup="${TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP:-${ECOCLAW_REDUCTION_PASS_REPEATED_READ_DEDUP:-true}}"
+  local reduction_pass_tool_payload_trim="${TOKENPILOT_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-${ECOCLAW_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-false}}"
+  local reduction_pass_html_slimming="${TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING:-${ECOCLAW_REDUCTION_PASS_HTML_SLIMMING:-true}}"
+  local reduction_pass_exec_output_truncation="${TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-${ECOCLAW_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-true}}"
+  local reduction_pass_agents_startup_optimization="${TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-${ECOCLAW_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-true}}"
   local default_model="${TOKENPILOT_MODEL:-${ECOCLAW_MODEL:-tokenpilot/gpt-5.4-mini}}"
-  local exec_host="${ECOCLAW_EXEC_HOST:-gateway}"
-  local exec_security="${ECOCLAW_EXEC_SECURITY:-full}"
-  local exec_ask="${ECOCLAW_EXEC_ASK:-off}"
-  local enable_eviction="${ECOCLAW_ENABLE_EVICTION:-false}"
-  local eviction_policy="${ECOCLAW_EVICTION_POLICY:-lru}"
-  local eviction_min_block_chars="${ECOCLAW_EVICTION_MIN_BLOCK_CHARS:-256}"
-  local eviction_replacement_mode="${ECOCLAW_EVICTION_REPLACEMENT_MODE:-pointer_stub}"
-  local task_state_estimator_enabled="${ECOCLAW_TASK_STATE_ESTIMATOR_ENABLED:-false}"
-  local task_state_estimator_base_url="${ECOCLAW_TASK_STATE_ESTIMATOR_BASE_URL:-}"
-  local task_state_estimator_api_key="${ECOCLAW_TASK_STATE_ESTIMATOR_API_KEY:-}"
-  local task_state_estimator_model="${ECOCLAW_TASK_STATE_ESTIMATOR_MODEL:-}"
-  local task_state_estimator_request_timeout_ms="${ECOCLAW_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-60000}"
-  local task_state_estimator_batch_turns="${ECOCLAW_TASK_STATE_ESTIMATOR_BATCH_TURNS:-5}"
-  local task_state_estimator_eviction_lookahead_turns="${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-3}"
-  local task_state_estimator_input_mode="${ECOCLAW_TASK_STATE_ESTIMATOR_INPUT_MODE:-sliding_window}"
+  local exec_host="${TOKENPILOT_EXEC_HOST:-${ECOCLAW_EXEC_HOST:-gateway}}"
+  local exec_security="${TOKENPILOT_EXEC_SECURITY:-${ECOCLAW_EXEC_SECURITY:-full}}"
+  local exec_ask="${TOKENPILOT_EXEC_ASK:-${ECOCLAW_EXEC_ASK:-off}}"
+  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-${ECOCLAW_ENABLE_EVICTION:-false}}"
+  local eviction_policy="${TOKENPILOT_EVICTION_POLICY:-${ECOCLAW_EVICTION_POLICY:-lru}}"
+  local eviction_min_block_chars="${TOKENPILOT_EVICTION_MIN_BLOCK_CHARS:-${ECOCLAW_EVICTION_MIN_BLOCK_CHARS:-256}}"
+  local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-${ECOCLAW_EVICTION_REPLACEMENT_MODE:-pointer_stub}}"
+  local task_state_estimator_enabled="${TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED:-${ECOCLAW_TASK_STATE_ESTIMATOR_ENABLED:-false}}"
+  local task_state_estimator_base_url="${TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL:-${ECOCLAW_TASK_STATE_ESTIMATOR_BASE_URL:-}}"
+  local task_state_estimator_api_key="${TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY:-${ECOCLAW_TASK_STATE_ESTIMATOR_API_KEY:-}}"
+  local task_state_estimator_model="${TOKENPILOT_TASK_STATE_ESTIMATOR_MODEL:-${ECOCLAW_TASK_STATE_ESTIMATOR_MODEL:-}}"
+  local task_state_estimator_request_timeout_ms="${TOKENPILOT_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-${ECOCLAW_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-60000}}"
+  local task_state_estimator_batch_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS:-${ECOCLAW_TASK_STATE_ESTIMATOR_BATCH_TURNS:-5}}"
+  local task_state_estimator_eviction_lookahead_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-3}}"
+  local task_state_estimator_input_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE:-${ECOCLAW_TASK_STATE_ESTIMATOR_INPUT_MODE:-sliding_window}}"
+  local task_state_estimator_lifecycle_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE:-${ECOCLAW_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE:-coupled}}"
+  local task_state_estimator_eviction_promotion_policy="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY:-fifo}}"
+  local task_state_estimator_eviction_promotion_hot_tail_size="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE:-1}}"
   if [[ ! -f "${config_path}" ]]; then
     echo "WARN: openclaw config not found, skip plugin runtime config patch: ${config_path}" >&2
     return 0
   fi
 
-  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" <<'PATCH_PY'
+  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${enable_reduction}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" "${task_state_estimator_lifecycle_mode}" "${task_state_estimator_eviction_promotion_policy}" "${task_state_estimator_eviction_promotion_hot_tail_size}" <<'PATCH_PY'
 import json
 import os
 import sys
@@ -245,6 +249,7 @@ import sys
     proxy_port_raw,
     plugin_load_path,
     proxy_pure_forward_raw,
+    enable_reduction_raw,
     trigger_min_chars_raw,
     max_tool_chars_raw,
     pass_repeated_read_dedup_raw,
@@ -268,10 +273,14 @@ import sys
     task_state_estimator_batch_turns_raw,
     task_state_estimator_eviction_lookahead_turns_raw,
     task_state_estimator_input_mode,
- ) = sys.argv[1:30]
+    task_state_estimator_lifecycle_mode,
+    task_state_estimator_eviction_promotion_policy,
+    task_state_estimator_eviction_promotion_hot_tail_size_raw,
+ ) = sys.argv[1:34]
 
 proxy_port = int(proxy_port_raw)
 proxy_pure_forward = str(proxy_pure_forward_raw).strip().lower() in ("1", "true", "yes", "on")
+enable_reduction = str(enable_reduction_raw).strip().lower() in ("1", "true", "yes", "on")
 trigger_min_chars = int(trigger_min_chars_raw)
 max_tool_chars = int(max_tool_chars_raw)
 parse_bool = lambda x: str(x).strip().lower() in ("1", "true", "yes", "on")
@@ -286,6 +295,7 @@ task_state_estimator_enabled = parse_bool(task_state_estimator_enabled_raw)
 task_state_estimator_request_timeout_ms = int(task_state_estimator_request_timeout_ms_raw)
 task_state_estimator_batch_turns = int(task_state_estimator_batch_turns_raw)
 task_state_estimator_eviction_lookahead_turns = int(task_state_estimator_eviction_lookahead_turns_raw)
+task_state_estimator_eviction_promotion_hot_tail_size = int(task_state_estimator_eviction_promotion_hot_tail_size_raw)
 
 with open(config_path, "r", encoding="utf-8") as f:
     cfg = json.load(f)
@@ -309,7 +319,7 @@ if proxy_api_key:
 modules = tokenpilot_cfg.setdefault("modules", {})
 modules["stabilizer"] = True
 modules["policy"] = True
-modules["reduction"] = True
+modules["reduction"] = enable_reduction
 modules["eviction"] = enable_eviction
 
 tokenpilot_cfg.pop("compaction", None)
@@ -331,6 +341,8 @@ reduction = tokenpilot_cfg.setdefault("reduction", {})
 reduction["engine"] = "layered"
 reduction["triggerMinChars"] = max(256, trigger_min_chars)
 reduction["maxToolChars"] = max(256, max_tool_chars)
+proxy_mode = tokenpilot_cfg.setdefault("proxyMode", {})
+proxy_mode["pureForward"] = proxy_pure_forward
 passes = reduction.setdefault("passes", {})
 passes["repeatedReadDedup"] = pass_repeated_read_dedup
 passes["toolPayloadTrim"] = pass_tool_payload_trim
@@ -351,17 +363,17 @@ def maybe_apply_json_env(env_name: str, key: str) -> None:
         raise SystemExit(f"{env_name} must decode to a JSON object")
     pass_options[key] = parsed
 
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_REPEATED_READ_DEDUP_JSON", "repeatedReadDedup")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_TOOL_PAYLOAD_TRIM_JSON", "toolPayloadTrim")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_HTML_SLIMMING_JSON", "htmlSlimming")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_EXEC_OUTPUT_TRUNCATION_JSON", "execOutputTruncation")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_AGENTS_STARTUP_OPTIMIZATION_JSON", "agentsStartupOptimization")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_FORMAT_SLIMMING_JSON", "formatSlimming")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_SEMANTIC_LLMLINGUA2_JSON", "semanticLlmlingua2")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_FORMAT_CLEANING_JSON", "formatCleaning")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_PATH_TRUNCATION_JSON", "pathTruncation")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_IMAGE_DOWNSAMPLE_JSON", "imageDownsample")
-maybe_apply_json_env("ECOCLAW_REDUCTION_PASS_OPTIONS_LINE_NUMBER_STRIP_JSON", "lineNumberStrip")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_REPEATED_READ_DEDUP_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_REPEATED_READ_DEDUP_JSON"), "repeatedReadDedup")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_TOOL_PAYLOAD_TRIM_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_TOOL_PAYLOAD_TRIM_JSON"), "toolPayloadTrim")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_HTML_SLIMMING_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_HTML_SLIMMING_JSON"), "htmlSlimming")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_EXEC_OUTPUT_TRUNCATION_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_EXEC_OUTPUT_TRUNCATION_JSON"), "execOutputTruncation")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_AGENTS_STARTUP_OPTIMIZATION_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_AGENTS_STARTUP_OPTIMIZATION_JSON"), "agentsStartupOptimization")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_FORMAT_SLIMMING_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_FORMAT_SLIMMING_JSON"), "formatSlimming")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_SEMANTIC_LLMLINGUA2_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_SEMANTIC_LLMLINGUA2_JSON"), "semanticLlmlingua2")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_FORMAT_CLEANING_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_FORMAT_CLEANING_JSON"), "formatCleaning")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_PATH_TRUNCATION_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_PATH_TRUNCATION_JSON"), "pathTruncation")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_IMAGE_DOWNSAMPLE_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_IMAGE_DOWNSAMPLE_JSON"), "imageDownsample")
+maybe_apply_json_env(os.environ.get("TOKENPILOT_REDUCTION_PASS_OPTIONS_LINE_NUMBER_STRIP_ENV", "TOKENPILOT_REDUCTION_PASS_OPTIONS_LINE_NUMBER_STRIP_JSON"), "lineNumberStrip")
 
 agents = cfg.setdefault("agents", {})
 defaults = agents.setdefault("defaults", {})
@@ -393,6 +405,17 @@ task_state_estimator["inputMode"] = (
     if task_state_estimator_input_mode == "completed_summary_plus_active_turns"
     else "sliding_window"
 )
+task_state_estimator["lifecycleMode"] = (
+    "decoupled"
+    if task_state_estimator_lifecycle_mode == "decoupled"
+    else "coupled"
+)
+task_state_estimator["evictionPromotionPolicy"] = (
+    "fifo"
+    if task_state_estimator_eviction_promotion_policy == "fifo"
+    else "fifo"
+)
+task_state_estimator["evictionPromotionHotTailSize"] = max(0, task_state_estimator_eviction_promotion_hot_tail_size)
 
 with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -404,6 +427,8 @@ print(
     f"port={tokenpilot_cfg.get('proxyPort')}",
     f"base={tokenpilot_cfg.get('proxyBaseUrl')}",
     f"engine={reduction.get('engine')}",
+    f"proxyPureForward={proxy_mode.get('pureForward')}",
+    f"reductionEnabled={modules.get('reduction')}",
     f"trim={passes.get('toolPayloadTrim')}",
     f"contextEngineSlot={slots.get('contextEngine')}",
     f"primary={model_defaults.get('primary')}",
@@ -414,6 +439,9 @@ print(
     f"taskStateEstimatorEnabled={task_state_estimator.get('enabled')}",
     f"taskStateEstimatorModel={task_state_estimator.get('model')}",
     f"taskStateEstimatorInputMode={task_state_estimator.get('inputMode')}",
+    f"taskStateEstimatorLifecycleMode={task_state_estimator.get('lifecycleMode')}",
+    f"taskStateEstimatorPromotionPolicy={task_state_estimator.get('evictionPromotionPolicy')}",
+    f"taskStateEstimatorHotTailSize={task_state_estimator.get('evictionPromotionHotTailSize')}",
     f"fallbacks={len(model_defaults.get('fallbacks', []))}",
 )
 PATCH_PY
