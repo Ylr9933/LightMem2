@@ -25,9 +25,10 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 
 from dotenv import load_dotenv
+import yaml
 
 # Load environment variables from .env file
 # scripts/ is at: EcoClaw-Bench/experiments/dataset/pinchbench/scripts/
@@ -51,6 +52,7 @@ from lib_agent import (
     normalize_benchmark_model_id,
     slugify_model,
 )
+from lib_fws import fws_available, is_fws_task, start_fws, stop_fws
 from lib_grading import GradeResult, grade_task
 from lib_tasks import Task, TaskLoader
 
@@ -404,7 +406,7 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("TOKENPILOT_SUITE")
         or os.environ.get("ECOCLAW_SUITE")
         or "all",
-        help='Tasks to run: "all", "automated-only", or comma-separated IDs',
+        help='Tasks to run: "all" (local supported set), "all-upstream", "automated-only", or comma-separated IDs',
     )
     parser.add_argument(
         "--output-dir",
@@ -473,12 +475,57 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _select_task_ids(tasks: List[Task], suite: str) -> Optional[List[str]]:
+def _load_local_dataset_policy(tasks_dir: Path) -> Dict[str, Any]:
+    policy_path = tasks_dir / "local_policy.yaml"
+    if not policy_path.exists():
+        return {
+            "default_exclude_task_ids": [],
+            "default_exclude_prefixes": [],
+        }
+
+    data = yaml.safe_load(policy_path.read_text(encoding="utf-8")) or {}
+    return {
+        "default_exclude_task_ids": list(data.get("default_exclude_task_ids", []) or []),
+        "default_exclude_prefixes": list(data.get("default_exclude_prefixes", []) or []),
+    }
+
+
+def _apply_local_dataset_policy(tasks: List[Task], policy: Dict[str, Any]) -> List[Task]:
+    excluded_ids: Set[str] = set(policy.get("default_exclude_task_ids", []) or [])
+    excluded_prefixes = tuple(policy.get("default_exclude_prefixes", []) or [])
+
+    filtered: List[Task] = []
+    excluded: List[str] = []
+    for task in tasks:
+        if task.task_id in excluded_ids or any(task.task_id.startswith(prefix) for prefix in excluded_prefixes):
+            excluded.append(task.task_id)
+            continue
+        filtered.append(task)
+
+    if excluded:
+        logger.info(
+            "Applied local dataset policy: excluded %s upstream tasks: %s",
+            len(excluded),
+            ", ".join(excluded),
+        )
+
+    return filtered
+
+
+def _select_tasks(tasks: List[Task], suite: str, policy: Dict[str, Any]) -> List[Task]:
+    suite = (suite or "all").strip()
+
     if suite == "all":
-        return None
+        return _apply_local_dataset_policy(tasks, policy)
+
+    if suite == "all-upstream":
+        return tasks
+
     if suite == "automated-only":
-        return [task.task_id for task in tasks if task.grading_type == "automated"]
-    return [task_id.strip() for task_id in suite.split(",") if task_id.strip()]
+        return [task for task in _apply_local_dataset_policy(tasks, policy) if task.grading_type == "automated"]
+
+    explicit_ids = {task_id.strip() for task_id in suite.split(",") if task_id.strip()}
+    return [task for task in tasks if task.task_id in explicit_ids]
 
 
 def _next_run_id(run_root: Path) -> str:
@@ -1009,6 +1056,7 @@ def _run_task_job(
     max_tool_calls_per_task: int = 0,
     defer_continuous_grading: bool = False,
     generate_only: bool = False,
+    manage_fws: bool = True,
 ) -> Dict[str, Any]:
     logger.info("\n%s", "=" * 80)
     logger.info(
@@ -1048,6 +1096,7 @@ def _run_task_job(
                 (defer_continuous_grading and not generate_only) and session_mode == "continuous"
             ),
             initial_session_id=initial_session_id,
+            manage_fws=manage_fws,
         )
     except Exception as exc:
         execution_error = str(exc)
@@ -1511,13 +1560,11 @@ def main():
         sys.exit(2)
     os.environ["PINCHBENCH_SESSION_MODE"] = session_mode
 
-    task_ids = _select_task_ids(runner.tasks, args.suite)
+    local_dataset_policy = _load_local_dataset_policy(tasks_dir)
+    tasks_to_run = _select_tasks(runner.tasks, args.suite, local_dataset_policy)
+    logger.info("Selected %s tasks for suite=%s (loaded=%s)", len(tasks_to_run), args.suite, len(runner.tasks))
     results = []
     grades_by_task_id = {}
-
-    tasks_to_run = runner.tasks
-    if task_ids is not None:
-        tasks_to_run = [task for task in runner.tasks if task.task_id in task_ids]
     tasks_by_id = {task.task_id: task for task in tasks_to_run}
 
     runs_per_task = max(1, args.runs)
@@ -1540,180 +1587,211 @@ def main():
     completed_jobs_lock = threading.Lock()
     progress_grader_thread: Optional[threading.Thread] = None
     progress_grader_stop_event: Optional[threading.Event] = None
+    run_scoped_fws_env: Optional[Dict[str, Optional[str]]] = None
+    continuous_agent_id: Optional[str] = None
+    continuous_agent_workspace: Optional[Path] = None
+    continuous_session_id: Optional[str] = None
+    isolated_agent_id: Optional[str] = None
+    isolated_agent_workspace: Optional[Path] = None
     generate_only = args.generate_only or (
         os.environ.get("PINCHBENCH_GENERATE_ONLY", "").strip().lower() == "true"
     )
-    if parallel_jobs == 1:
-        transcript_cursor_by_agent: Dict[str, int] = {}
-        continuous_agent_id: Optional[str] = None
-        continuous_agent_workspace: Optional[Path] = None
-        continuous_session_id: Optional[str] = None
-        defer_continuous_grading = session_mode == "continuous" and not generate_only
-        if session_mode == "continuous":
-            continuous_agent_id = f"bench-{model_slug}-{run_id}-serial"
-            continuous_agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace_serial")
-            continuous_session_id = f"bench-{model_slug}-{run_id}-continuous-s1-{int(time.time() * 1000)}"
-            ensure_agent_exists(continuous_agent_id, args.model, continuous_agent_workspace)
-            cleanup_agent_sessions(continuous_agent_id)
-            transcript_cursor_by_agent[continuous_agent_id] = 0
-            if defer_continuous_grading:
-                bench_root = skill_root.parent.parent.parent
-                progress_jsonl_env = os.environ.get("PINCHBENCH_EVAL_JSONL_FILE", "").strip()
-                if progress_jsonl_env:
-                    progress_log_path = Path(progress_jsonl_env)
-                else:
-                    progress_log_path = bench_root / "log" / f"pinchbench_{run_id}_eval.jsonl"
-                if progress_log_path.exists():
-                    progress_log_path.unlink()
-                progress_grader_stop_event = threading.Event()
-                progress_grader_thread = threading.Thread(
-                    target=_run_progress_grader_loop,
-                    kwargs={
-                        "completed_jobs": completed_jobs,
-                        "completed_jobs_lock": completed_jobs_lock,
-                        "stop_event": progress_grader_stop_event,
-                        "tasks_by_id": tasks_by_id,
-                        "agent_id": continuous_agent_id,
-                        "skill_dir": skill_dir,
-                        "verbose": args.verbose,
-                        "judge_model": judge_model,
-                        "run_id": run_id,
-                        "max_llm_calls_per_task": args.max_llm_calls_per_task,
-                        "max_tool_calls_per_task": args.max_tool_calls_per_task,
-                        "progress_log_path": progress_log_path,
-                    },
-                    daemon=True,
+    defer_continuous_grading = session_mode == "continuous" and not generate_only
+    manage_fws_per_task = True
+    try:
+        if session_mode == "continuous" and any(is_fws_task(task.frontmatter) for task in tasks_to_run):
+            if not fws_available():
+                logger.warning(
+                    "Continuous run includes fws-backed tasks, but fws is not available; proceeding without run-scoped startup."
                 )
-                progress_grader_thread.start()
-                logger.info("Async continual progress grading log: %s", progress_log_path)
-        for job in jobs:
-            agent_id_override = continuous_agent_id if session_mode == "continuous" else None
-            workspace_override = continuous_agent_workspace if session_mode == "continuous" else None
-            transcript_start = 0
-            if agent_id_override:
-                transcript_start = transcript_cursor_by_agent.get(agent_id_override, 0)
-            completed_job = _run_task_job(
-                    task=job["task"],
-                    task_index=job["task_index"],
-                    total_tasks=len(tasks_to_run),
-                    run_index=job["run_index"],
-                    runs_per_task=runs_per_task,
-                    job_index=job["job_index"],
-                    model=args.model,
-                    run_id=run_id,
-                    timeout_multiplier=args.timeout_multiplier,
-                    skill_dir=skill_dir,
-                    verbose=args.verbose,
-                    judge_model=judge_model,
-                    session_mode=session_mode,
-                    agent_id_override=agent_id_override,
-                    agent_workspace_override=workspace_override,
-                    initial_session_id=continuous_session_id if session_mode == "continuous" else None,
-                    transcript_start_index=transcript_start,
-                    max_llm_calls_per_task=args.max_llm_calls_per_task,
-                    max_tool_calls_per_task=args.max_tool_calls_per_task,
-                    defer_continuous_grading=defer_continuous_grading,
-                    generate_only=generate_only,
-                )
-            with completed_jobs_lock:
-                completed_jobs.append(completed_job)
-            if agent_id_override and session_mode == "continuous":
-                unlocked = _wait_for_continuous_session_unlock(agent_id_override)
-                _salvage_continuous_job_transcript(completed_job)
-                if not unlocked:
-                    logger.warning(
-                        "Proceeding without a clean continual unlock for agent %s; prior session locks may still be draining or stale.",
-                        agent_id_override,
-                    )
-            if agent_id_override and completed_jobs and not defer_continuous_grading:
-                latest = completed_jobs[-1]
-                span = latest.get("transcript_span", {})
-                transcript_cursor_by_agent[agent_id_override] = int(
-                    span.get("end", transcript_cursor_by_agent.get(agent_id_override, 0))
-                )
-            if session_mode == "continuous":
-                latest_session_id = completed_job.get("final_session_id")
-                if isinstance(latest_session_id, str) and latest_session_id.strip():
-                    continuous_session_id = latest_session_id.strip()
-    else:
-        with ThreadPoolExecutor(max_workers=parallel_jobs) as executor:
-            futures = {
-                executor.submit(
-                    _run_task_job,
-                    task=job["task"],
-                    task_index=job["task_index"],
-                    total_tasks=len(tasks_to_run),
-                    run_index=job["run_index"],
-                    runs_per_task=runs_per_task,
-                    job_index=job["job_index"],
-                    model=args.model,
-                    run_id=run_id,
-                    timeout_multiplier=args.timeout_multiplier,
-                    skill_dir=skill_dir,
-                    verbose=args.verbose,
-                    judge_model=judge_model,
-                    session_mode=session_mode,
-                    max_llm_calls_per_task=args.max_llm_calls_per_task,
-                    max_tool_calls_per_task=args.max_tool_calls_per_task,
-                    generate_only=generate_only,
-                ): job
-                for job in jobs
-            }
-            for future in as_completed(futures):
-                job = futures[future]
-                try:
-                    completed_jobs.append(future.result())
-                except Exception as exc:
-                    task = job["task"]
-                    logger.warning("Task execution crashed for %s, continuing: %s", task.task_id, exc)
-                    fallback_grade = GradeResult(
-                        task_id=task.task_id,
-                        score=0.0,
-                        max_score=1.0,
-                        grading_type=task.grading_type,
-                        breakdown={},
-                        notes=f"Parallel worker crashed: {exc}",
-                    )
-                    completed_jobs.append(
-                        {
-                            "task_id": task.task_id,
-                            "task_index": job["task_index"],
-                            "run_index": job["run_index"],
-                            "agent_id": "",
-                            "transcript_span": {
-                                "mode": session_mode,
-                                "start": 0,
-                                "end": 0,
-                                "length": 0,
-                            },
-                            "call_counts": {
-                                "llm_calls": 0,
-                                "tool_calls": 0,
-                                "guard_triggered": False,
-                            },
-                            "result": {
-                                "agent_id": "",
-                                "task_id": task.task_id,
-                                "status": "error",
-                                "transcript": [],
-                                "llm_calls": [],
-                                "llm_models": [],
-                                "usage": {},
-                                "workspace": "",
-                                "exit_code": -1,
-                                "timed_out": False,
-                                "execution_time": 0.0,
-                                "stdout": "",
-                                "stderr": str(exc),
-                            },
-                            "grade": fallback_grade,
-                        }
-                    )
+            else:
+                run_scoped_fws_env = start_fws()
+                manage_fws_per_task = False
+                logger.info("Started run-scoped fws for continuous benchmark run")
 
-    if progress_grader_stop_event is not None:
-        progress_grader_stop_event.set()
-    if progress_grader_thread is not None:
-        progress_grader_thread.join(timeout=60)
+        if parallel_jobs == 1:
+            transcript_cursor_by_agent: Dict[str, int] = {}
+            if session_mode == "continuous":
+                continuous_agent_id = f"bench-{model_slug}-{run_id}-serial"
+                continuous_agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace_serial")
+                continuous_session_id = f"bench-{model_slug}-{run_id}-continuous-s1-{int(time.time() * 1000)}"
+                ensure_agent_exists(continuous_agent_id, args.model, continuous_agent_workspace)
+                cleanup_agent_sessions(continuous_agent_id)
+                transcript_cursor_by_agent[continuous_agent_id] = 0
+                if defer_continuous_grading:
+                    bench_root = skill_root.parent.parent.parent
+                    progress_jsonl_env = os.environ.get("PINCHBENCH_EVAL_JSONL_FILE", "").strip()
+                    if progress_jsonl_env:
+                        progress_log_path = Path(progress_jsonl_env)
+                    else:
+                        progress_log_path = bench_root / "log" / f"pinchbench_{run_id}_eval.jsonl"
+                    if progress_log_path.exists():
+                        progress_log_path.unlink()
+                    progress_grader_stop_event = threading.Event()
+                    progress_grader_thread = threading.Thread(
+                        target=_run_progress_grader_loop,
+                        kwargs={
+                            "completed_jobs": completed_jobs,
+                            "completed_jobs_lock": completed_jobs_lock,
+                            "stop_event": progress_grader_stop_event,
+                            "tasks_by_id": tasks_by_id,
+                            "agent_id": continuous_agent_id,
+                            "skill_dir": skill_dir,
+                            "verbose": args.verbose,
+                            "judge_model": judge_model,
+                            "run_id": run_id,
+                            "max_llm_calls_per_task": args.max_llm_calls_per_task,
+                            "max_tool_calls_per_task": args.max_tool_calls_per_task,
+                            "progress_log_path": progress_log_path,
+                        },
+                        daemon=True,
+                    )
+                    progress_grader_thread.start()
+                    logger.info("Async continual progress grading log: %s", progress_log_path)
+            if session_mode == "isolated":
+                isolated_agent_id = f"bench-{model_slug}-{run_id}-isolated"
+                isolated_agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace_isolated")
+                ensure_agent_exists(isolated_agent_id, args.model, isolated_agent_workspace)
+                cleanup_agent_sessions(isolated_agent_id)
+            for job in jobs:
+                agent_id_override = None
+                workspace_override = None
+                if session_mode == "continuous":
+                    agent_id_override = continuous_agent_id
+                    workspace_override = continuous_agent_workspace
+                elif session_mode == "isolated":
+                    agent_id_override = isolated_agent_id
+                    workspace_override = isolated_agent_workspace
+                transcript_start = 0
+                if agent_id_override and session_mode == "continuous":
+                    transcript_start = transcript_cursor_by_agent.get(agent_id_override, 0)
+                completed_job = _run_task_job(
+                        task=job["task"],
+                        task_index=job["task_index"],
+                        total_tasks=len(tasks_to_run),
+                        run_index=job["run_index"],
+                        runs_per_task=runs_per_task,
+                        job_index=job["job_index"],
+                        model=args.model,
+                        run_id=run_id,
+                        timeout_multiplier=args.timeout_multiplier,
+                        skill_dir=skill_dir,
+                        verbose=args.verbose,
+                        judge_model=judge_model,
+                        session_mode=session_mode,
+                        agent_id_override=agent_id_override,
+                        agent_workspace_override=workspace_override,
+                        initial_session_id=continuous_session_id if session_mode == "continuous" else None,
+                        transcript_start_index=transcript_start,
+                        max_llm_calls_per_task=args.max_llm_calls_per_task,
+                        max_tool_calls_per_task=args.max_tool_calls_per_task,
+                        defer_continuous_grading=defer_continuous_grading,
+                        generate_only=generate_only,
+                        manage_fws=manage_fws_per_task,
+                    )
+                with completed_jobs_lock:
+                    completed_jobs.append(completed_job)
+                if agent_id_override and session_mode == "continuous":
+                    unlocked = _wait_for_continuous_session_unlock(agent_id_override)
+                    _salvage_continuous_job_transcript(completed_job)
+                    if not unlocked:
+                        logger.warning(
+                            "Proceeding without a clean continual unlock for agent %s; prior session locks may still be draining or stale.",
+                            agent_id_override,
+                        )
+                if agent_id_override and completed_jobs and not defer_continuous_grading:
+                    latest = completed_jobs[-1]
+                    span = latest.get("transcript_span", {})
+                    transcript_cursor_by_agent[agent_id_override] = int(
+                        span.get("end", transcript_cursor_by_agent.get(agent_id_override, 0))
+                    )
+                if session_mode == "continuous":
+                    latest_session_id = completed_job.get("final_session_id")
+                    if isinstance(latest_session_id, str) and latest_session_id.strip():
+                        continuous_session_id = latest_session_id.strip()
+        else:
+            with ThreadPoolExecutor(max_workers=parallel_jobs) as executor:
+                futures = {
+                    executor.submit(
+                        _run_task_job,
+                        task=job["task"],
+                        task_index=job["task_index"],
+                        total_tasks=len(tasks_to_run),
+                        run_index=job["run_index"],
+                        runs_per_task=runs_per_task,
+                        job_index=job["job_index"],
+                        model=args.model,
+                        run_id=run_id,
+                        timeout_multiplier=args.timeout_multiplier,
+                        skill_dir=skill_dir,
+                        verbose=args.verbose,
+                        judge_model=judge_model,
+                        session_mode=session_mode,
+                        max_llm_calls_per_task=args.max_llm_calls_per_task,
+                        max_tool_calls_per_task=args.max_tool_calls_per_task,
+                        generate_only=generate_only,
+                        manage_fws=manage_fws_per_task,
+                    ): job
+                    for job in jobs
+                }
+                for future in as_completed(futures):
+                    job = futures[future]
+                    try:
+                        completed_jobs.append(future.result())
+                    except Exception as exc:
+                        task = job["task"]
+                        logger.warning("Task execution crashed for %s, continuing: %s", task.task_id, exc)
+                        fallback_grade = GradeResult(
+                            task_id=task.task_id,
+                            score=0.0,
+                            max_score=1.0,
+                            grading_type=task.grading_type,
+                            breakdown={},
+                            notes=f"Parallel worker crashed: {exc}",
+                        )
+                        completed_jobs.append(
+                            {
+                                "task_id": task.task_id,
+                                "task_index": job["task_index"],
+                                "run_index": job["run_index"],
+                                "agent_id": "",
+                                "transcript_span": {
+                                    "mode": session_mode,
+                                    "start": 0,
+                                    "end": 0,
+                                    "length": 0,
+                                },
+                                "call_counts": {
+                                    "llm_calls": 0,
+                                    "tool_calls": 0,
+                                    "guard_triggered": False,
+                                },
+                                "result": {
+                                    "agent_id": "",
+                                    "task_id": task.task_id,
+                                    "status": "error",
+                                    "transcript": [],
+                                    "llm_calls": [],
+                                    "llm_models": [],
+                                    "usage": {},
+                                    "workspace": "",
+                                    "exit_code": -1,
+                                    "timed_out": False,
+                                    "execution_time": 0.0,
+                                    "stdout": "",
+                                    "stderr": str(exc),
+                                },
+                                "grade": fallback_grade,
+                            }
+                        )
+    finally:
+        if progress_grader_stop_event is not None:
+            progress_grader_stop_event.set()
+        if progress_grader_thread is not None:
+            progress_grader_thread.join(timeout=60)
+        if run_scoped_fws_env is not None:
+            stop_fws(run_scoped_fws_env)
+            logger.info("Stopped run-scoped fws for continuous benchmark run")
 
     completed_jobs.sort(key=lambda item: (int(item["task_index"]), int(item["run_index"])))
 

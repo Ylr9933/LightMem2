@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class Task:
     """Represents a single benchmark task."""
-    
+
     def __init__(
         self,
         task_id: str,
@@ -50,10 +50,10 @@ class Task:
         self.grading_weights = grading_weights
         self.file_path = file_path
         self.frontmatter = frontmatter or {}
-    
+
     def __repr__(self) -> str:
         return f"Task(id={self.task_id}, name={self.name}, category={self.category})"
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert task to dictionary representation."""
         return {
@@ -75,62 +75,71 @@ class Task:
 
 class TaskLoader:
     """Loads and parses task files from the tasks directory."""
-    
+
     def __init__(self, tasks_dir: Path):
         self.tasks_dir = tasks_dir
         logger.info(f"Initialized TaskLoader with directory: {tasks_dir}")
-    
+
     def load_all_tasks(self) -> List[Task]:
         """Load all task files from the tasks directory."""
+        manifest_index = self._load_manifest_index()
+        task_files = self._resolve_task_files(manifest_index)
         tasks = []
-        task_files = sorted(self.tasks_dir.glob("task_*.md"))
-        
+
         logger.info(f"Found {len(task_files)} task files")
-        
+
         for task_file in task_files:
             try:
-                task = self.load_task(task_file)
+                task = self.load_task(task_file, manifest_index)
                 tasks.append(task)
                 logger.info(f"Successfully loaded task: {task.task_id}")
             except Exception as e:
                 logger.error(f"Failed to load task from {task_file}: {e}", exc_info=True)
-        
+
         logger.info(f"Successfully loaded {len(tasks)} tasks")
         return tasks
-    
-    def load_task(self, task_file: Path) -> Task:
+
+    def load_task(self, task_file: Path, manifest_index: Optional[Dict[str, str]] = None) -> Task:
         """Load and parse a single task file."""
         logger.debug(f"Loading task from: {task_file}")
-        
+
         content = task_file.read_text(encoding='utf-8')
-        
+
         # Extract YAML frontmatter
         frontmatter_match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)$', content, re.DOTALL)
         if not frontmatter_match:
             raise ValueError(f"No YAML frontmatter found in {task_file}")
-        
+
         frontmatter_text = frontmatter_match.group(1)
         body_text = frontmatter_match.group(2)
-        
+
         # Parse YAML frontmatter
         try:
-            metadata = yaml.safe_load(frontmatter_text)
+            metadata = yaml.safe_load(frontmatter_text) or {}
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML frontmatter in {task_file}: {e}")
-        
+
+        task_id = metadata.get('id', '')
+        if not task_id:
+            raise ValueError(f"Task file missing id in frontmatter: {task_file}")
+
         # Extract sections from body
         sections = self._parse_sections(body_text)
-        
+
         # Extract grading criteria
         grading_criteria = self._extract_grading_criteria(
             sections.get('Grading Criteria', '')
         )
-        
+
+        category = metadata.get('category', '')
+        if manifest_index and task_id in manifest_index:
+            category = manifest_index[task_id]
+
         # Create Task object
         task = Task(
-            task_id=metadata.get('id', ''),
+            task_id=task_id,
             name=metadata.get('name', ''),
-            category=metadata.get('category', ''),
+            category=category,
             grading_type=metadata.get('grading_type', 'automated'),
             timeout_seconds=metadata.get('timeout_seconds', 120),
             workspace_files=metadata.get('workspace_files', []),
@@ -143,15 +152,93 @@ class TaskLoader:
             file_path=task_file,
             frontmatter=metadata,
         )
-        
+
         return task
-    
+
+    def _load_manifest_index(self) -> Dict[str, str]:
+        """Load canonical task ordering and categories from manifest.yaml."""
+        manifest_path = self.tasks_dir / 'manifest.yaml'
+        if not manifest_path.exists():
+            logger.warning("No manifest.yaml found; falling back to filename ordering")
+            return {}
+
+        data = yaml.safe_load(manifest_path.read_text(encoding='utf-8')) or {}
+        categories = data.get('categories', {}) or {}
+        run_first = data.get('run_first', []) or []
+
+        task_to_category: Dict[str, str] = {}
+        duplicates = set()
+        for category, task_ids in categories.items():
+            for task_id in task_ids or []:
+                if task_id in task_to_category:
+                    duplicates.add(task_id)
+                task_to_category[task_id] = category
+
+        if duplicates:
+            dupes = ', '.join(sorted(duplicates))
+            raise ValueError(f"Duplicate task ids in manifest categories: {dupes}")
+
+        missing_run_first = [task_id for task_id in run_first if task_id not in task_to_category]
+        if missing_run_first:
+            missing = ', '.join(missing_run_first)
+            raise ValueError(f"run_first task ids missing from manifest categories: {missing}")
+
+        return task_to_category
+
+    def _resolve_task_files(self, manifest_index: Dict[str, str]) -> List[Path]:
+        """Resolve task files in canonical manifest order, with glob fallback."""
+        if not manifest_index:
+            return sorted(self.tasks_dir.glob('task_*.md'))
+
+        manifest_path = self.tasks_dir / 'manifest.yaml'
+        data = yaml.safe_load(manifest_path.read_text(encoding='utf-8')) or {}
+        categories = data.get('categories', {}) or {}
+        run_first = data.get('run_first', []) or []
+
+        ordered_ids: List[str] = []
+        seen = set()
+
+        for task_id in run_first:
+            if task_id not in seen:
+                ordered_ids.append(task_id)
+                seen.add(task_id)
+
+        for _, task_ids in categories.items():
+            for task_id in task_ids or []:
+                if task_id not in seen:
+                    ordered_ids.append(task_id)
+                    seen.add(task_id)
+
+        resolved_files: List[Path] = []
+        missing_files: List[str] = []
+        for task_id in ordered_ids:
+            task_file = self.tasks_dir / f"{task_id}.md"
+            if not task_file.exists():
+                missing_files.append(task_id)
+                continue
+            resolved_files.append(task_file)
+
+        if missing_files:
+            missing = ', '.join(missing_files)
+            raise ValueError(f"Manifest references missing task files: {missing}")
+
+        discovered = {p.stem for p in self.tasks_dir.glob('task_*.md')}
+        extra = sorted(discovered - set(ordered_ids))
+        if extra:
+            logger.warning(
+                "Found task files not present in manifest; appending after canonical order: %s",
+                ', '.join(extra),
+            )
+            resolved_files.extend(self.tasks_dir / f"{task_id}.md" for task_id in extra)
+
+        return resolved_files
+
     def _parse_sections(self, body: str) -> Dict[str, str]:
         """Parse markdown sections from task body."""
         sections = {}
         current_section = None
         current_content = []
-        
+
         for line in body.split('\n'):
             # Check for section headers (## Header)
             header_match = re.match(r'^##\s+(.+)$', line)
@@ -159,20 +246,20 @@ class TaskLoader:
                 # Save previous section
                 if current_section:
                     sections[current_section] = '\n'.join(current_content).strip()
-                
+
                 # Start new section
                 current_section = header_match.group(1)
                 current_content = []
             else:
                 if current_section:
                     current_content.append(line)
-        
+
         # Save last section
         if current_section:
             sections[current_section] = '\n'.join(current_content).strip()
-        
+
         return sections
-    
+
     def _extract_grading_criteria(self, criteria_text: str) -> List[str]:
         """Extract grading criteria from checklist format."""
         criteria = []

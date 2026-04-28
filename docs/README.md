@@ -30,6 +30,8 @@ directory in this repo.
 ## Experiments
 
 - [Estimator Mode Comparison](experiments/estimator-mode.md) - Sliding window vs completed summary modes
+- [PinchBench Dataset Replacement Checklist](experiments/pinchbench-dataset-replacement-checklist.md) - Work required to replace the local 23-task PinchBench subset with the upstream dataset
+- [PinchBench Dataset Migration Status](experiments/pinchbench-dataset-migration-status.md) - Current completion status of the upstream PinchBench dataset migration
 - [Observations Source](../exp/) - Raw observation files from experiments
 - [Experiments Placeholder](../experiments/README.md) - Planned home for future benchmark/evaluation assets
 
