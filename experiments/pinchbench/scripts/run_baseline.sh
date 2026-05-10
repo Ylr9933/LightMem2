@@ -62,6 +62,11 @@ configure_baseline_runtime() {
   local baseline_base_url="${BASELINE_BASE_URL:-${ECOCLAW_BASE_URL:-}}"
   local baseline_api_key="${BASELINE_API_KEY:-${ECOCLAW_API_KEY:-}}"
   local provider_name="${BASELINE_PROVIDER_PREFIX:-${PINCHBENCH_MODEL_PROVIDER_PREFIX:-${ECOCLAW_OPENAI_PROVIDER:-}}}"
+  local exec_host="${TOKENPILOT_EXEC_HOST:-${ECOCLAW_EXEC_HOST:-gateway}}"
+  local exec_security="${TOKENPILOT_EXEC_SECURITY:-${ECOCLAW_EXEC_SECURITY:-full}}"
+  local exec_ask="${TOKENPILOT_EXEC_ASK:-${ECOCLAW_EXEC_ASK:-off}}"
+  local elevated_enabled="${TOKENPILOT_ELEVATED_ENABLED:-${ECOCLAW_ELEVATED_ENABLED:-true}}"
+  local elevated_allow_from="${TOKENPILOT_ELEVATED_ALLOW_FROM:-${ECOCLAW_ELEVATED_ALLOW_FROM:-webchat}}"
   local resolved_model="${1:?resolved model is required}"
   local resolved_judge="${2:?resolved judge is required}"
   if [[ ! -f "${config_path}" ]]; then
@@ -85,7 +90,7 @@ configure_baseline_runtime() {
   local model_id="${resolved_model##*/}"
   local judge_id="${resolved_judge##*/}"
 
-  python3 - "${config_path}" "${baseline_base_url}" "${baseline_api_key}" "${provider_name}" "${model_id}" "${judge_id}" <<'BASELINE_PY'
+  python3 - "${config_path}" "${baseline_base_url}" "${baseline_api_key}" "${provider_name}" "${model_id}" "${judge_id}" "${exec_host}" "${exec_security}" "${exec_ask}" "${elevated_enabled}" "${elevated_allow_from}" <<'BASELINE_PY'
 import json
 import sys
 from pathlib import Path
@@ -96,15 +101,68 @@ baseline_api_key = sys.argv[3]
 provider_name = sys.argv[4]
 model_id = sys.argv[5]
 judge_id = sys.argv[6]
+exec_host = sys.argv[7]
+exec_security = sys.argv[8]
+exec_ask = sys.argv[9]
+elevated_enabled = str(sys.argv[10]).strip().lower() in ("1", "true", "yes", "on")
+elevated_allow_from = sys.argv[11].strip()
 obj = json.loads(config_path.read_text(encoding="utf-8"))
 
 plugins = obj.setdefault("plugins", {})
+load_cfg = plugins.setdefault("load", {})
 entries = plugins.setdefault("entries", {})
+allow = plugins.get("allow")
+if not isinstance(allow, list):
+    allow = []
+load_paths = load_cfg.get("paths")
+if not isinstance(load_paths, list):
+    load_paths = []
 entries.pop("ecoclaw", None)
 slots = plugins.setdefault("slots", {})
 eco = entries.setdefault("tokenpilot", {})
 eco["enabled"] = False
 slots["contextEngine"] = "legacy"
+tokenpilot_cfg = eco.setdefault("config", {})
+hooks = tokenpilot_cfg.setdefault("hooks", {})
+hooks["beforeToolCall"] = False
+hooks["toolResultPersist"] = False
+context_engine = tokenpilot_cfg.setdefault("contextEngine", {})
+context_engine["enabled"] = False
+modules = tokenpilot_cfg.setdefault("modules", {})
+modules["stabilizer"] = False
+modules["policy"] = False
+modules["reduction"] = False
+modules["eviction"] = False
+reduction_cfg = tokenpilot_cfg.setdefault("reduction", {})
+passes = reduction_cfg.setdefault("passes", {})
+for key in list(passes.keys()):
+    passes[key] = False
+for key in (
+    "repeatedReadDedup",
+    "toolPayloadTrim",
+    "htmlSlimming",
+    "execOutputTruncation",
+    "agentsStartupOptimization",
+    "memoryFaultRecovery",
+):
+    passes[key] = False
+tokenpilot_cfg.setdefault("eviction", {})["enabled"] = False
+tokenpilot_cfg.setdefault("taskStateEstimator", {})["enabled"] = False
+plugins["allow"] = ["tokenpilot"]
+load_cfg["paths"] = [str(Path.home() / ".openclaw" / "extensions" / "tokenpilot")]
+
+tools = obj.setdefault("tools", {})
+exec_cfg = tools.setdefault("exec", {})
+exec_cfg["host"] = exec_host
+exec_cfg["security"] = exec_security
+exec_cfg["ask"] = exec_ask
+tools["allow"] = ["memory_fault_recover"]
+tools["deny"] = []
+elevated_cfg = tools.setdefault("elevated", {})
+elevated_cfg["enabled"] = elevated_enabled
+allow_from = elevated_cfg.setdefault("allowFrom", {})
+if elevated_allow_from:
+    allow_from[elevated_allow_from] = ["exec"]
 
 models = obj.setdefault("models", {})
 providers = models.setdefault("providers", {})
@@ -149,7 +207,9 @@ mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}" "${REPORT_DIR}"
 restore_baseline_runtime() {
   if [[ "${BASELINE_RUNTIME_CONFIG_MUTATED}" == "1" ]]; then
     restore_openclaw_config || true
-    ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}" ensure_openclaw_gateway_running >/dev/null 2>&1 || true
+    PINCHBENCH_SKIP_METHOD_RUNTIME_PATCH=true \
+    ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}" \
+    ensure_openclaw_gateway_running >/dev/null 2>&1 || true
   fi
 }
 trap 'restore_baseline_runtime' EXIT INT TERM
@@ -158,8 +218,11 @@ if [[ "${PHASE}" != "eval" ]]; then
   backup_openclaw_config
   BASELINE_RUNTIME_CONFIG_MUTATED=1
   configure_baseline_runtime "${RESOLVED_MODEL}" "${RESOLVED_JUDGE}"
+  ensure_pinchbench_exec_approvals
   validate_openclaw_runtime_config
-  ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}" ensure_openclaw_gateway_running
+  PINCHBENCH_SKIP_METHOD_RUNTIME_PATCH=true \
+  ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}" \
+  ensure_openclaw_gateway_running
 fi
 
 BENCH_ARGS=(

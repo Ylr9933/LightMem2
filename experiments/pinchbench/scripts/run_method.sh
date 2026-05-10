@@ -37,20 +37,27 @@ while [[ $# -gt 0 ]]; do
 done
 
 import_runtime_envs
+PINCHBENCH_TMP_ROOT="${PINCHBENCH_TMP_ROOT:-/tmp/pinchbench}"
+export PINCHBENCH_TMP_ROOT
+if [[ "${PINCHBENCH_TMP_ROOT}" != "/tmp/pinchbench" && -d "/tmp/pinchbench" ]]; then
+  rm -rf /tmp/pinchbench 2>/dev/null || true
+fi
 MODEL_LIKE="${MODEL:-${TOKENPILOT_MODEL:-${ECOCLAW_MODEL:-tokenpilot/gpt-5.4-mini}}}"
 JUDGE_LIKE="${JUDGE:-${TOKENPILOT_JUDGE:-${ECOCLAW_JUDGE:-tokenpilot/gpt-5.4-mini}}}"
 apply_model_runtime_env "${MODEL_LIKE}"
 require_method_runtime_env
 apply_runtime_env
 if [[ "${PHASE}" != "eval" ]]; then
-  export ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}"
+  export ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-true}}"
   recover_stale_openclaw_config_backup
   ensure_plugin_runtime_config
   sanitize_plugin_runtime_config
+  ensure_pinchbench_exec_approvals
   validate_openclaw_runtime_config
   assert_method_runtime_config
   ensure_openclaw_gateway_running
   sanitize_plugin_runtime_config
+  ensure_pinchbench_exec_approvals
   validate_openclaw_runtime_config
   assert_method_runtime_config
 fi

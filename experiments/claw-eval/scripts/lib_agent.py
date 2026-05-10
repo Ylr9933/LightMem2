@@ -9,6 +9,7 @@ import random
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import time
 import uuid
@@ -37,10 +38,10 @@ def _make_agent_id(model_id: str, task_id: str) -> str:
     return f"ce-{model_slug}-{task_slug[:24]}-{suffix}"
 
 
-def _task_prompt(task: ClawEvalTask) -> str:
+def _task_prompt(task: ClawEvalTask, prompt_prefix: str | None = None) -> str:
     tools = "\n".join(f"- {name}" for name in task.declared_tools) or "- (none declared)"
     attachments = "\n".join(f"- /workspace/{path}" if not str(path).startswith("/workspace/") else f"- {path}" for path in task.attachments) or "- (none attached)"
-    return (
+    prompt = (
         "You are executing a benchmark task.\n"
         "Ignore any workspace bootstrap or identity files unrelated to the task.\n"
         "Use available tools faithfully and do not fabricate tool results.\n\n"
@@ -54,6 +55,9 @@ def _task_prompt(task: ClawEvalTask) -> str:
         "## Declared Tools\n"
         f"{tools}\n"
     )
+    if prompt_prefix and prompt_prefix.strip():
+        return f"{prompt_prefix.strip()}\n\n{prompt}"
+    return prompt
 
 
 def _shift_localhost_port(url: str, offset: int) -> str:
@@ -156,6 +160,141 @@ def _read_json_with_retry(path: Path, *, attempts: int = 6, sleep_seconds: float
             time.sleep(sleep_seconds)
     assert last_error is not None
     raise last_error
+
+
+def _resolve_session_store_entry(agent_id: str, config_path: Path) -> Dict[str, Any] | None:
+    cfg = _read_json_with_retry(config_path)
+    sessions_store: Path | None = None
+    for entry in cfg.get("agents", {}).get("list", []):
+        if entry.get("id") != agent_id:
+            continue
+        agent_dir = entry.get("agentDir")
+        if agent_dir:
+            sessions_store = Path(agent_dir).resolve().parent / "sessions" / "sessions.json"
+            break
+    if sessions_store is None or not sessions_store.exists():
+        return None
+    try:
+        sessions_payload = json.loads(sessions_store.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(sessions_payload, dict):
+        return None
+
+    normalized_id = agent_id.replace(":", "-")
+    preferred_keys = [
+        f"agent:{agent_id}:main",
+        f"agent:{agent_id}:default",
+        f"agent:{normalized_id}:main",
+        f"agent:{normalized_id}:default",
+    ]
+    for key in preferred_keys:
+        entry = sessions_payload.get(key)
+        if isinstance(entry, dict) and entry.get("sessionId"):
+            return entry
+
+    newest_entry: Dict[str, Any] | None = None
+    newest_timestamp = -1.0
+    for entry in sessions_payload.values():
+        if not isinstance(entry, dict):
+            continue
+        if "sessionId" not in entry:
+            continue
+        updated_at = entry.get("updatedAt")
+        if isinstance(updated_at, (int, float)) and float(updated_at) > newest_timestamp:
+            newest_timestamp = float(updated_at)
+            newest_entry = entry
+    return newest_entry
+
+
+def _resolve_session_id_from_store(agent_id: str, config_path: Path) -> str | None:
+    entry = _resolve_session_store_entry(agent_id, config_path)
+    if isinstance(entry, dict):
+        session_id = entry.get("sessionId")
+        if isinstance(session_id, str) and session_id:
+            return session_id
+    return None
+
+
+def _resolve_session_file_from_store(agent_id: str, config_path: Path) -> Path | None:
+    entry = _resolve_session_store_entry(agent_id, config_path)
+    if not isinstance(entry, dict):
+        return None
+    session_file = entry.get("sessionFile")
+    if isinstance(session_file, str) and session_file.strip():
+        return Path(session_file)
+    return None
+
+
+def _read_proc_starttime(pid: int) -> int | None:
+    try:
+        stat_text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        tail = stat_text.rsplit(")", 1)[1].strip()
+        fields = tail.split()
+        return int(fields[19])
+    except (IndexError, ValueError):
+        return None
+
+
+def _is_stale_lock_file(path: Path) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    pid = payload.get("pid")
+    starttime = payload.get("starttime")
+    if not isinstance(pid, int):
+        return False
+    current_starttime = _read_proc_starttime(pid)
+    if current_starttime is None:
+        return True
+    if isinstance(starttime, int) and current_starttime != starttime:
+        return True
+    return False
+
+
+def _cleanup_stale_lock_files(paths: List[Path]) -> List[Path]:
+    active: List[Path] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        if _is_stale_lock_file(path):
+            try:
+                path.unlink()
+            except OSError:
+                active.append(path)
+            continue
+        active.append(path)
+    return active
+
+
+def _pending_transcript_lock_paths(agent_id: str, sessions_dir: Path, session_id: str, config_path: Path) -> List[Path]:
+    candidates: List[Path] = []
+    resolved_session_file = _resolve_session_file_from_store(agent_id, config_path)
+    if resolved_session_file is not None:
+        candidates.append(Path(f"{resolved_session_file}.lock"))
+    resolved_session_id = _resolve_session_id_from_store(agent_id, config_path)
+    if resolved_session_id:
+        candidates.append(sessions_dir / f"{resolved_session_id}.jsonl.lock")
+    if session_id:
+        candidates.append(sessions_dir / f"{session_id}.jsonl.lock")
+
+    seen: set[str] = set()
+    existing: List[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.exists():
+            existing.append(path)
+    if existing:
+        return _cleanup_stale_lock_files(existing)
+    fallback = sorted(sessions_dir.glob("*.jsonl.lock")) if sessions_dir.exists() else []
+    return _cleanup_stale_lock_files(fallback)
 
 
 def _normalize_model_name_for_env(model_like: str) -> str:
@@ -571,6 +710,17 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path, confi
     raise RuntimeError(f"Failed to create agent {agent_id}: {last_error or 'unknown error'}")
 
 
+_BOOTSTRAP_FILES = ["SOUL.md", "BOOTSTRAP.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md", "TOOLS.md"]
+
+
+def _remove_readonly(func, path, _):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except OSError:
+        pass
+
+
 def _sanitize_workspace(workspace_dir: Path) -> None:
     workspace_dir.mkdir(parents=True, exist_ok=True)
     git_dir = workspace_dir / ".git"
@@ -843,7 +993,15 @@ def _collect_env_snapshot(task: ClawEvalTask, workspace_dir: Path) -> Dict[str, 
     return snapshot
 
 
-def _find_latest_session_file(agent_id: str, workspace_dir: Path, config_path: Path, started_at: float) -> Path | None:
+def _find_latest_session_file(
+    agent_id: str,
+    workspace_dir: Path,
+    config_path: Path,
+    started_at: float,
+    *,
+    session_id: str,
+    session_mode: str,
+) -> Path | None:
     cfg = _read_json_with_retry(config_path)
     sessions_dir: Path | None = None
     for entry in cfg.get("agents", {}).get("list", []):
@@ -862,12 +1020,49 @@ def _find_latest_session_file(agent_id: str, workspace_dir: Path, config_path: P
                     break
     if sessions_dir is None or not sessions_dir.exists():
         return None
-    candidates = [p for p in sessions_dir.glob("*.jsonl") if p.stat().st_mtime >= started_at - 1]
-    if not candidates:
-        candidates = list(sessions_dir.glob("*.jsonl"))
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+    continuous_mode = session_mode == "continuous"
+    max_attempts = int(os.environ.get(
+        "CLAW_EVAL_TRANSCRIPT_RETRIES_CONTINUOUS" if continuous_mode else "CLAW_EVAL_TRANSCRIPT_RETRIES",
+        "24" if continuous_mode else "6",
+    ))
+    retry_sleep_s = float(os.environ.get(
+        "CLAW_EVAL_TRANSCRIPT_RETRY_SLEEP_CONTINUOUS" if continuous_mode else "CLAW_EVAL_TRANSCRIPT_RETRY_SLEEP",
+        "5.0" if continuous_mode else "1.0",
+    ))
+    lock_drain_wait_seconds = float(os.environ.get(
+        "CLAW_EVAL_TRANSCRIPT_LOCK_DRAIN_WAIT_SECONDS_CONTINUOUS" if continuous_mode else "CLAW_EVAL_TRANSCRIPT_LOCK_DRAIN_WAIT_SECONDS",
+        "120" if continuous_mode else "45",
+    ))
+    deadline = time.time() + max_attempts * retry_sleep_s
+    lock_deadline = deadline
+    tolerance_seconds = 5.0
+
+    while True:
+        resolved_session_file = _resolve_session_file_from_store(agent_id, config_path)
+        if resolved_session_file and resolved_session_file.exists():
+            return resolved_session_file
+        resolved_session_id = _resolve_session_id_from_store(agent_id, config_path)
+        if resolved_session_id:
+            candidate = sessions_dir / f"{resolved_session_id}.jsonl"
+            if candidate.exists():
+                return candidate
+        candidates = [p for p in sessions_dir.glob("*.jsonl") if p.stat().st_mtime >= (started_at - tolerance_seconds)]
+        if not candidates:
+            candidates = list(sessions_dir.glob("*.jsonl"))
+        if candidates:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+        direct_path = sessions_dir / f"{session_id}.jsonl"
+        if direct_path.exists():
+            return direct_path
+
+        pending_locks = _pending_transcript_lock_paths(agent_id, sessions_dir, session_id, config_path)
+        now = time.time()
+        if pending_locks:
+            lock_deadline = max(lock_deadline, now + lock_drain_wait_seconds)
+        if now >= deadline and (not pending_locks or now >= lock_deadline):
+            break
+        time.sleep(retry_sleep_s)
+    return None
 
 
 def _load_transcript(session_file: Path | None) -> List[Dict[str, Any]]:
@@ -1015,8 +1210,17 @@ def _collect_post_run_state(
     workspace_dir: Path,
     config_path: Path,
     started_at: float,
+    session_id: str,
+    session_mode: str,
 ) -> Dict[str, Any]:
-    session_file = _find_latest_session_file(agent_id, workspace_dir, config_path, started_at)
+    session_file = _find_latest_session_file(
+        agent_id,
+        workspace_dir,
+        config_path,
+        started_at,
+        session_id=session_id,
+        session_mode=session_mode,
+    )
     transcript = _load_transcript(session_file)
     usage = _extract_usage(transcript)
     audit_data = collect_task_audit(task)
@@ -1040,6 +1244,8 @@ def _wait_for_post_run_settle(
     workspace_dir: Path,
     config_path: Path,
     started_at: float,
+    session_id: str,
+    session_mode: str,
     timeout_seconds: float = 12.0,
     interval_seconds: float = 1.0,
 ) -> Dict[str, Any]:
@@ -1054,6 +1260,8 @@ def _wait_for_post_run_settle(
             workspace_dir=workspace_dir,
             config_path=config_path,
             started_at=started_at,
+            session_id=session_id,
+            session_mode=session_mode,
         )
         fingerprint = (
             state["session_file"],
@@ -1123,6 +1331,8 @@ def execute_task(
     session_id_override: str | None = None,
     preserve_workspace: bool = False,
     ensure_agent: bool = True,
+    prompt_prefix: str | None = None,
+    session_mode: str = "isolated",
 ) -> Dict[str, Any]:
     task_root = run_root / task.task_id
     workspace_dir = workspace_dir_override or (task_root / "workspace")
@@ -1138,7 +1348,16 @@ def execute_task(
         if ensure_agent:
             ensure_agent_exists(agent_id, model_id, workspace_dir, config_path, run_task)
         if not preserve_workspace:
-            _sanitize_workspace(workspace_dir)
+            saved_bootstrap: dict[str, bytes] = {}
+            for fname in _BOOTSTRAP_FILES:
+                fpath = workspace_dir / fname
+                if fpath.exists():
+                    saved_bootstrap[fname] = fpath.read_bytes()
+            if workspace_dir.exists():
+                shutil.rmtree(workspace_dir, onerror=_remove_readonly)
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+            for fname, content in saved_bootstrap.items():
+                (workspace_dir / fname).write_bytes(content)
         else:
             workspace_dir.mkdir(parents=True, exist_ok=True)
         _inject_workspace_files(run_task, workspace_dir)
@@ -1158,7 +1377,7 @@ def execute_task(
                 logs_dir=logs_dir,
             )
             env = _inject_mock_service_urls(_openclaw_env(config_path), run_task)
-            next_message = _task_prompt(run_task)
+            next_message = _task_prompt(run_task, prompt_prefix=prompt_prefix)
             combined_stdout: List[str] = []
             combined_stderr: List[str] = []
             while True:
@@ -1195,6 +1414,8 @@ def execute_task(
                     workspace_dir=workspace_dir,
                     config_path=config_path,
                     started_at=started_at,
+                    session_id=session_id,
+                    session_mode=session_mode,
                 )
                 audit_data = post_run_state["audit_data"]
                 session_file = post_run_state["session_file"]

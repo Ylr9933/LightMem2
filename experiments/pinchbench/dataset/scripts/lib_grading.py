@@ -31,6 +31,11 @@ class GradeResult:
     max_score: float
     grading_type: str
     breakdown: Dict[str, float]
+    passed: bool
+    failure_modes: List[str]
+    judge_summary: str
+    judge_raw_response: Dict[str, Any]
+    judge_response_text: str
     notes: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -40,8 +45,48 @@ class GradeResult:
             "max_score": self.max_score,
             "grading_type": self.grading_type,
             "breakdown": self.breakdown,
+            "passed": self.passed,
+            "failure_modes": self.failure_modes,
+            "judge_summary": self.judge_summary,
+            "judge_raw_response": self.judge_raw_response,
+            "judge_response_text": self.judge_response_text,
             "notes": self.notes,
         }
+
+
+def _derive_passed(score: float, max_score: float) -> bool:
+    if max_score <= 0:
+        return False
+    ratio = score / max_score
+    return ratio >= 0.5
+
+
+def _derive_failure_modes(*, score: float, execution_status: str, notes: str, raw_response: Dict[str, Any]) -> List[str]:
+    failures: List[str] = []
+    if execution_status and execution_status != "success":
+        failures.append("execution_error")
+    if score < 0.5:
+        failures.append("low_score")
+    text = " ".join(
+        [
+            str(notes or ""),
+            str(raw_response.get("notes") or ""),
+            str(raw_response.get("reasoning") or ""),
+            str(raw_response.get("justification") or ""),
+        ]
+    ).lower()
+    if "timeout" in text:
+        failures.append("timeout")
+    if "parse" in text or "invalid" in text:
+        failures.append("judge_parse_issue")
+    deduped: List[str] = []
+    seen = set()
+    for item in failures:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
 
 
 def grade_task(
@@ -101,6 +146,11 @@ def _grade_automated(task: Task, execution_result: Dict[str, Any], verbose: bool
             max_score=1.0,
             grading_type="automated",
             breakdown={},
+            passed=False,
+            failure_modes=["missing_automated_grader"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes="No automated grading code found",
         )
 
@@ -114,6 +164,11 @@ def _grade_automated(task: Task, execution_result: Dict[str, Any], verbose: bool
             max_score=1.0,
             grading_type="automated",
             breakdown={},
+            passed=False,
+            failure_modes=["missing_automated_grading_function"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes="Automated grading function missing",
         )
 
@@ -134,6 +189,11 @@ def _grade_automated(task: Task, execution_result: Dict[str, Any], verbose: bool
         max_score=1.0,
         grading_type="automated",
         breakdown=_normalize_score_dict(scores),
+        passed=_derive_passed(total, 1.0),
+        failure_modes=[] if _derive_passed(total, 1.0) else ["low_score"],
+        judge_summary="",
+        judge_raw_response={},
+        judge_response_text="",
         notes="",
     )
 
@@ -164,6 +224,11 @@ def _grade_llm_judge(
             max_score=1.0,
             grading_type="llm_judge",
             breakdown={},
+            passed=False,
+            failure_modes=["execution_error", "missing_transcript"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes=f"Skipped: task execution failed ({execution_status}), no transcript to evaluate",
         )
 
@@ -186,6 +251,7 @@ def _grade_llm_judge(
     raw_parsed: Dict[str, Any] = {}
     parsed: Dict[str, Any] = {}
     last_error = ""
+    last_response_text = ""
 
     for attempt in range(max_judge_attempts):
         judge_result = call_judge_api(
@@ -197,6 +263,7 @@ def _grade_llm_judge(
             logger.info("   [VERBOSE] Judge execution status: %s", judge_result.get("status"))
             if judge_result.get("error"):
                 logger.info("   [VERBOSE] Judge error: %s", judge_result.get("error"))
+        last_response_text = str(judge_result.get("text", "") or "")
         if judge_result.get("status") != "success":
             last_error = str(judge_result.get("error") or judge_result.get("status") or "judge_error")
             logger.warning(
@@ -228,12 +295,32 @@ def _grade_llm_judge(
     if total is None:
         notes = str(notes or last_error or "LLM judge failed: no parseable response")
         total = 0.0
+    judge_summary = str(
+        parsed.get("notes")
+        or raw_parsed.get("notes")
+        or raw_parsed.get("reasoning")
+        or raw_parsed.get("justification")
+        or notes
+        or ""
+    )
+    passed = _derive_passed(float(total), 1.0)
+    failure_modes = _derive_failure_modes(
+        score=float(total),
+        execution_status=execution_status,
+        notes=str(notes),
+        raw_response=raw_parsed,
+    )
     return GradeResult(
         task_id=task.task_id,
         score=float(total),
         max_score=1.0,
         grading_type="llm_judge",
         breakdown=_normalize_score_dict(breakdown),
+        passed=passed,
+        failure_modes=failure_modes,
+        judge_summary=judge_summary,
+        judge_raw_response=raw_parsed,
+        judge_response_text=last_response_text,
         notes=str(notes) if notes is not None else "",
     )
 
@@ -260,6 +347,14 @@ def _combine_grades(task: Task, auto_result: GradeResult, llm_result: GradeResul
         max_score=1.0,
         grading_type="hybrid",
         breakdown=breakdown,
+        passed=_derive_passed(combined_score, 1.0),
+        failure_modes=list(dict.fromkeys([*auto_result.failure_modes, *llm_result.failure_modes])),
+        judge_summary=llm_result.judge_summary or auto_result.judge_summary,
+        judge_raw_response={
+            "automated": auto_result.judge_raw_response,
+            "llm_judge": llm_result.judge_raw_response,
+        },
+        judge_response_text=llm_result.judge_response_text or auto_result.judge_response_text,
         notes=notes,
     )
 

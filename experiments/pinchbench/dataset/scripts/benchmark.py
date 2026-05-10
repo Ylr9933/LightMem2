@@ -38,6 +38,10 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent.parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
+PINCHBENCH_TMP_ROOT = Path(
+    os.environ.get("PINCHBENCH_TMP_ROOT", "/tmp/pinchbench")
+).resolve()
+
 from lib_agent import (
     cleanup_agent_sessions,
     _extract_llm_calls_from_transcript,
@@ -50,6 +54,7 @@ from lib_agent import (
     ensure_agent_exists,
     execute_openclaw_task,
     normalize_benchmark_model_id,
+    reset_agent_session_store,
     slugify_model,
 )
 from lib_fws import fws_available, is_fws_task, start_fws, stop_fws
@@ -174,7 +179,7 @@ def _snapshot_workspace_for_task(
     if not source_workspace.exists():
         return workspace_path
 
-    snapshot_root = Path(f"/tmp/pinchbench/{run_id}/workspace_snapshots")
+    snapshot_root = PINCHBENCH_TMP_ROOT / run_id / "workspace_snapshots"
     snapshot_root.mkdir(parents=True, exist_ok=True)
     snapshot_path = snapshot_root / f"job_{job_index:04d}_{task_id}"
     if snapshot_path.exists():
@@ -722,6 +727,11 @@ def _grade_execution_result(
             max_score=1.0,
             grading_type=task.grading_type,
             breakdown={},
+            passed=False,
+            failure_modes=["guard_triggered"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes=f"Guard triggered: {'; '.join(guard_notes)}",
         )
     else:
@@ -749,6 +759,11 @@ def _grade_execution_result(
                 max_score=1.0,
                 grading_type=task.grading_type,
                 breakdown={},
+                passed=False,
+                failure_modes=["grading_failed"],
+                judge_summary="",
+                judge_raw_response={},
+                judge_response_text="",
                 notes=note,
             )
 
@@ -1157,6 +1172,11 @@ def _run_task_job(
             max_score=1.0,
             grading_type=task.grading_type,
             breakdown={},
+            passed=False,
+            failure_modes=["generate_only"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes="Generate-only phase; grading deferred",
         )
         call_counts = {
@@ -1177,6 +1197,11 @@ def _run_task_job(
             max_score=1.0,
             grading_type=task.grading_type,
             breakdown={},
+            passed=False,
+            failure_modes=["deferred_grading"],
+            judge_summary="",
+            judge_raw_response={},
+            judge_response_text="",
             notes="Deferred continual grading",
         )
         call_counts = {
@@ -1550,7 +1575,7 @@ def main():
     runner.load_tasks()
 
     model_slug = slugify_model(args.model)
-    run_root = Path("/tmp/pinchbench")
+    run_root = PINCHBENCH_TMP_ROOT
     run_id = _next_run_id(run_root)
     skill_dir = skill_root
 
@@ -1609,7 +1634,11 @@ def main():
     generate_only = args.generate_only or (
         os.environ.get("PINCHBENCH_GENERATE_ONLY", "").strip().lower() == "true"
     )
-    defer_continuous_grading = session_mode == "continuous" and not generate_only
+    defer_continuous_grading = (
+        session_mode == "continuous"
+        and not generate_only
+        and os.environ.get("PINCHBENCH_DEFER_CONTINUOUS_GRADING", "").strip().lower() == "true"
+    )
     manage_fws_per_task = True
     try:
         if session_mode == "continuous" and any(is_fws_task(task.frontmatter) for task in tasks_to_run):
@@ -1626,10 +1655,10 @@ def main():
             transcript_cursor_by_agent: Dict[str, int] = {}
             if session_mode == "continuous":
                 continuous_agent_id = f"bench-{model_slug}-{run_id}-serial"
-                continuous_agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace_serial")
+                continuous_agent_workspace = PINCHBENCH_TMP_ROOT / run_id / "agent_workspace_serial"
                 continuous_session_id = f"bench-{model_slug}-{run_id}-continuous-s1-{int(time.time() * 1000)}"
                 ensure_agent_exists(continuous_agent_id, args.model, continuous_agent_workspace)
-                cleanup_agent_sessions(continuous_agent_id)
+                reset_agent_session_store(continuous_agent_id)
                 transcript_cursor_by_agent[continuous_agent_id] = 0
                 if defer_continuous_grading:
                     bench_root = skill_root.parent.parent.parent
@@ -1661,9 +1690,11 @@ def main():
                     )
                     progress_grader_thread.start()
                     logger.info("Async continual progress grading log: %s", progress_log_path)
+                else:
+                    logger.info("Continuous grading mode: immediate per-task grading enabled")
             if session_mode == "isolated":
                 isolated_agent_id = f"bench-{model_slug}-{run_id}-isolated"
-                isolated_agent_workspace = Path(f"/tmp/pinchbench/{run_id}/agent_workspace_isolated")
+                isolated_agent_workspace = PINCHBENCH_TMP_ROOT / run_id / "agent_workspace_isolated"
                 ensure_agent_exists(isolated_agent_id, args.model, isolated_agent_workspace)
                 cleanup_agent_sessions(isolated_agent_id)
             for job in jobs:
@@ -1760,6 +1791,11 @@ def main():
                             max_score=1.0,
                             grading_type=task.grading_type,
                             breakdown={},
+                            passed=False,
+                            failure_modes=["worker_crash"],
+                            judge_summary="",
+                            judge_raw_response={},
+                            judge_response_text="",
                             notes=f"Parallel worker crashed: {exc}",
                         )
                         completed_jobs.append(

@@ -18,6 +18,7 @@ import os
 import secrets
 import signal
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -108,6 +109,13 @@ def _parse_bool_env(name: str, default: bool | None = None) -> bool | None:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _should_enable_tokenpilot_runtime(execution_model: str) -> bool:
+    explicit = _parse_bool_env("TOKENPILOT_RUNTIME_ENABLED")
+    if explicit is not None:
+        return explicit
+    return execution_model.startswith("tokenpilot/")
+
+
 def _clear_tokenpilot_runtime_settings(config_path: Path) -> dict[str, object]:
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     plugins = raw.setdefault("plugins", {})
@@ -116,126 +124,65 @@ def _clear_tokenpilot_runtime_settings(config_path: Path) -> dict[str, object]:
         slots["contextEngine"] = "legacy"
     config_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {
-        "tokenpilot_enabled": True,
+        "tokenpilot_enabled": False,
         "contextEngine": slots.get("contextEngine"),
     }
-
-
-def _should_enable_tokenpilot_runtime(execution_model: str) -> bool:
-    explicit = _parse_bool_env("TOKENPILOT_RUNTIME_ENABLED")
-    if explicit is not None:
-        return explicit
-    return execution_model.startswith("tokenpilot/")
 
 
 def _apply_tokenpilot_runtime_settings(config_path: Path, *, execution_model: str) -> dict[str, object]:
     if not _should_enable_tokenpilot_runtime(execution_model):
         return _clear_tokenpilot_runtime_settings(config_path)
 
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    common_sh = Path(__file__).resolve().parents[2] / "pinchbench" / "scripts" / "common.sh"
+    if not common_sh.exists():
+        raise RuntimeError(f"Missing pinchbench runtime helper: {common_sh}")
 
-    enable_reduction = _parse_bool_env("TOKENPILOT_ENABLE_REDUCTION")
-    enable_eviction = _parse_bool_env("TOKENPILOT_ENABLE_EVICTION")
-    estimator_enabled = _parse_bool_env("TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED")
+    summary_script = """
+set -euo pipefail
+source "$1"
+ensure_plugin_runtime_config
+sanitize_plugin_runtime_config
+validate_openclaw_runtime_config
+python3 - "$2" <<'PY'
+import json
+import sys
+from pathlib import Path
+cfg = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+plugins = cfg.get("plugins", {})
+slots = plugins.get("slots", {})
+tokenpilot = ((plugins.get("entries") or {}).get("tokenpilot") or {}).get("config") or {}
+modules = tokenpilot.get("modules") or {}
+estimator = tokenpilot.get("taskStateEstimator") or {}
+memory = tokenpilot.get("memory") or {}
+print(json.dumps({
+    "reduction": modules.get("reduction"),
+    "eviction": modules.get("eviction"),
+    "estimator": estimator.get("enabled"),
+    "memory": memory.get("enabled"),
+    "memoryAutoDistill": memory.get("autoDistill"),
+    "memoryTopK": memory.get("topK"),
+    "contextEngine": slots.get("contextEngine"),
+}))
+PY
+""".strip()
 
-    if enable_reduction is None and enable_eviction is None and estimator_enabled is None:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, suffix=".sh") as handle:
+        handle.write(summary_script)
+        helper_script = Path(handle.name)
+    try:
+        proc = subprocess.run(
+            ["bash", str(helper_script), str(common_sh), str(config_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    finally:
+        helper_script.unlink(missing_ok=True)
+
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if not lines:
         return {}
-
-    plugins = raw.setdefault("plugins", {})
-    plugins["enabled"] = True
-    allow = plugins.setdefault("allow", [])
-    if not isinstance(allow, list):
-        allow = []
-    if "tokenpilot" not in allow:
-        allow.append("tokenpilot")
-    plugins["allow"] = allow
-    slots = plugins.setdefault("slots", {})
-    slots["contextEngine"] = "layered-context"
-    entries = plugins.setdefault("entries", {})
-    tokenpilot_entry = entries.setdefault("tokenpilot", {})
-    tokenpilot_entry["enabled"] = True
-
-    tokenpilot_cfg = tokenpilot_entry.setdefault("config", {})
-    tokenpilot_cfg["enabled"] = True
-    tokenpilot_cfg["proxyAutostart"] = True
-    modules = tokenpilot_cfg.setdefault("modules", {})
-    modules.setdefault("policy", True)
-    modules.setdefault("stabilizer", True)
-    if enable_reduction is not None:
-        modules["reduction"] = enable_reduction
-    if enable_eviction is not None:
-        modules["eviction"] = enable_eviction
-
-    reduction = tokenpilot_cfg.setdefault("reduction", {})
-    reduction["engine"] = "layered"
-    reduction["triggerMinChars"] = int(
-        os.environ.get("TOKENPILOT_REDUCTION_TRIGGER_MIN_CHARS", reduction.get("triggerMinChars", 2200))
-    )
-    reduction["maxToolChars"] = int(
-        os.environ.get("TOKENPILOT_REDUCTION_MAX_TOOL_CHARS", reduction.get("maxToolChars", 1200))
-    )
-    passes = reduction.setdefault("passes", {})
-    for env_name, field, fallback in (
-        ("TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP", "repeatedReadDedup", True),
-        ("TOKENPILOT_REDUCTION_PASS_TOOL_PAYLOAD_TRIM", "toolPayloadTrim", True),
-        ("TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING", "htmlSlimming", True),
-        ("TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION", "execOutputTruncation", True),
-        ("TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION", "agentsStartupOptimization", True),
-    ):
-        passes[field] = _parse_bool_env(env_name, bool(passes.get(field, fallback)))
-
-    eviction = tokenpilot_cfg.setdefault("eviction", {})
-    if enable_eviction is not None:
-        eviction["enabled"] = enable_eviction
-    eviction["policy"] = os.environ.get("TOKENPILOT_EVICTION_POLICY", str(eviction.get("policy", "lru")))
-    eviction["minBlockChars"] = int(
-        os.environ.get("TOKENPILOT_EVICTION_MIN_BLOCK_CHARS", eviction.get("minBlockChars", 256))
-    )
-    eviction["replacementMode"] = os.environ.get(
-        "TOKENPILOT_EVICTION_REPLACEMENT_MODE",
-        str(eviction.get("replacementMode", "drop")),
-    )
-
-    estimator = tokenpilot_cfg.setdefault("taskStateEstimator", {})
-    if estimator_enabled is not None:
-        estimator["enabled"] = estimator_enabled
-    estimator["batchTurns"] = int(
-        os.environ.get("TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS", estimator.get("batchTurns", 3))
-    )
-    estimator["evictionLookaheadTurns"] = int(
-        os.environ.get(
-            "TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS",
-            estimator.get("evictionLookaheadTurns", 3),
-        )
-    )
-    estimator["inputMode"] = os.environ.get(
-        "TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE",
-        str(estimator.get("inputMode", "sliding_window")),
-    )
-    estimator["lifecycleMode"] = os.environ.get(
-        "TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE",
-        str(estimator.get("lifecycleMode", "decoupled")),
-    )
-    estimator["evictionPromotionPolicy"] = os.environ.get(
-        "TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY",
-        str(estimator.get("evictionPromotionPolicy", "fifo")),
-    )
-    estimator["evictionPromotionHotTailSize"] = int(
-        os.environ.get(
-            "TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE",
-            estimator.get("evictionPromotionHotTailSize", 1),
-        )
-    )
-    if "TOKENPILOT_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS" in os.environ:
-        estimator["requestTimeoutMs"] = int(os.environ["TOKENPILOT_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS"])
-
-    config_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {
-        "reduction": modules.get("reduction"),
-        "eviction": modules.get("eviction"),
-        "estimator": estimator.get("enabled"),
-        "contextEngine": slots.get("contextEngine"),
-    }
+    return json.loads(lines[-1])
 
 
 def _default_service_code_root() -> Path:
@@ -468,8 +415,9 @@ def main() -> None:
                         agent_id_override=shared_agent_id,
                         workspace_dir_override=shared_workspace,
                         session_id_override=shared_session_id,
-                        preserve_workspace=(args.session_mode == "continuous"),
+                        preserve_workspace=False,
                         ensure_agent=not (args.session_mode == "continuous"),
+                        session_mode=args.session_mode,
                     )
                     grade = grade_execution_result(
                         task_yaml_path=task.task_yaml_path,

@@ -9,6 +9,7 @@ normalize_openclaw_runtime_env() {
   local openclaw_home="${TOKENPILOT_OPENCLAW_HOME:-${ECOCLAW_OPENCLAW_HOME:-${HOME}}}"
   local runtime_local_bin="${openclaw_home}/.local/bin"
   export HOME="${openclaw_home}"
+  export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-${HOME}/.openclaw}"
   export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/openclaw-cache}"
   export XDG_CONFIG_HOME="${HOME}/.config"
   export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
@@ -223,10 +224,12 @@ ensure_plugin_runtime_config() {
   local exec_host="${TOKENPILOT_EXEC_HOST:-${ECOCLAW_EXEC_HOST:-gateway}}"
   local exec_security="${TOKENPILOT_EXEC_SECURITY:-${ECOCLAW_EXEC_SECURITY:-full}}"
   local exec_ask="${TOKENPILOT_EXEC_ASK:-${ECOCLAW_EXEC_ASK:-off}}"
+  local elevated_enabled="${TOKENPILOT_ELEVATED_ENABLED:-${ECOCLAW_ELEVATED_ENABLED:-true}}"
+  local elevated_allow_from="${TOKENPILOT_ELEVATED_ALLOW_FROM:-${ECOCLAW_ELEVATED_ALLOW_FROM:-webchat}}"
   local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-${ECOCLAW_ENABLE_EVICTION:-false}}"
   local eviction_policy="${TOKENPILOT_EVICTION_POLICY:-${ECOCLAW_EVICTION_POLICY:-lru}}"
   local eviction_min_block_chars="${TOKENPILOT_EVICTION_MIN_BLOCK_CHARS:-${ECOCLAW_EVICTION_MIN_BLOCK_CHARS:-256}}"
-  local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-${ECOCLAW_EVICTION_REPLACEMENT_MODE:-pointer_stub}}"
+  local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-${ECOCLAW_EVICTION_REPLACEMENT_MODE:-drop}}"
   local task_state_estimator_enabled="${TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED:-${ECOCLAW_TASK_STATE_ESTIMATOR_ENABLED:-__KEEP__}}"
   local task_state_estimator_base_url="${TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL:-${ECOCLAW_TASK_STATE_ESTIMATOR_BASE_URL:-__KEEP__}}"
   local task_state_estimator_api_key="${TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY:-${ECOCLAW_TASK_STATE_ESTIMATOR_API_KEY:-__KEEP__}}"
@@ -243,7 +246,7 @@ ensure_plugin_runtime_config() {
     return 0
   fi
 
-  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${enable_reduction}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" "${task_state_estimator_lifecycle_mode}" "${task_state_estimator_eviction_promotion_policy}" "${task_state_estimator_eviction_promotion_hot_tail_size}" <<'PATCH_PY'
+  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${enable_reduction}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${elevated_enabled}" "${elevated_allow_from}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" "${task_state_estimator_lifecycle_mode}" "${task_state_estimator_eviction_promotion_policy}" "${task_state_estimator_eviction_promotion_hot_tail_size}" <<'PATCH_PY'
 import json
 import os
 import sys
@@ -267,6 +270,8 @@ import sys
     exec_host,
     exec_security,
     exec_ask,
+    elevated_enabled_raw,
+    elevated_allow_from,
     enable_eviction_raw,
     eviction_policy,
     eviction_min_block_chars_raw,
@@ -282,7 +287,7 @@ import sys
     task_state_estimator_lifecycle_mode,
     task_state_estimator_eviction_promotion_policy,
     task_state_estimator_eviction_promotion_hot_tail_size_raw,
- ) = sys.argv[1:34]
+ ) = sys.argv[1:36]
 
 proxy_port = int(proxy_port_raw)
 proxy_pure_forward = str(proxy_pure_forward_raw).strip().lower() in ("1", "true", "yes", "on")
@@ -296,6 +301,7 @@ pass_html_slimming = parse_bool(pass_html_slimming_raw)
 pass_exec_output_truncation = parse_bool(pass_exec_output_truncation_raw)
 pass_agents_startup_optimization = parse_bool(pass_agents_startup_optimization_raw)
 enable_eviction = parse_bool(enable_eviction_raw)
+elevated_enabled = parse_bool(elevated_enabled_raw)
 eviction_min_block_chars = int(eviction_min_block_chars_raw)
 task_state_estimator_enabled = parse_bool(task_state_estimator_enabled_raw)
 keep_estimator_enabled = task_state_estimator_enabled_raw == "__KEEP__"
@@ -329,6 +335,7 @@ with open(config_path, "r", encoding="utf-8") as f:
 plugins = cfg.setdefault("plugins", {})
 load_cfg = plugins.setdefault("load", {})
 load_cfg["paths"] = [plugin_load_path]
+plugins["allow"] = ["tokenpilot"]
 entries = plugins.setdefault("entries", {})
 entries.pop("ecoclaw", None)
 tokenpilot = entries.setdefault("tokenpilot", {})
@@ -353,11 +360,13 @@ modules["eviction"] = enable_eviction
 tokenpilot_cfg.pop("compaction", None)
 tokenpilot_cfg.pop("proxyMode", None)
 tokenpilot_cfg.pop("hooks", None)
-tokenpilot_cfg.pop("contextEngine", None)
 modules = tokenpilot_cfg.get("modules")
 if isinstance(modules, dict):
     modules.pop("compaction", None)
     modules.pop("decisionLedger", None)
+
+context_engine = tokenpilot_cfg.setdefault("contextEngine", {})
+context_engine["enabled"] = True
 
 eviction = tokenpilot_cfg.setdefault("eviction", {})
 eviction["enabled"] = enable_eviction
@@ -412,12 +421,17 @@ model_defaults["fallbacks"] = []
 
 tools = cfg.setdefault("tools", {})
 allow = tools.setdefault("allow", [])
-if isinstance(allow, list) and "memory_fault_recover" not in allow:
-    allow.append("memory_fault_recover")
+tools["allow"] = ["memory_fault_recover"]
+tools["deny"] = []
 exec_cfg = tools.setdefault("exec", {})
 exec_cfg["host"] = exec_host
 exec_cfg["security"] = exec_security
 exec_cfg["ask"] = exec_ask
+elevated_cfg = tools.setdefault("elevated", {})
+elevated_cfg["enabled"] = elevated_enabled
+allow_from = elevated_cfg.setdefault("allowFrom", {})
+if elevated_allow_from.strip():
+    allow_from[elevated_allow_from.strip()] = ["exec"]
 task_state_estimator = tokenpilot_cfg.setdefault("taskStateEstimator", {})
 if not keep_estimator_enabled:
     task_state_estimator["enabled"] = task_state_estimator_enabled
@@ -470,6 +484,8 @@ print(
     f"execHost={exec_cfg.get('host')}",
     f"execSecurity={exec_cfg.get('security')}",
     f"execAsk={exec_cfg.get('ask')}",
+    f"elevatedEnabled={elevated_cfg.get('enabled')}",
+    f"elevatedAllowFrom={','.join(sorted(k for k,v in allow_from.items() if v))}",
     f"evictionReplacementMode={eviction.get('replacementMode')}",
     f"taskStateEstimatorEnabled={task_state_estimator.get('enabled')}",
     f"taskStateEstimatorModel={task_state_estimator.get('model')}",
@@ -485,18 +501,20 @@ PATCH_PY
 sanitize_plugin_runtime_config() {
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
   local enable_eviction="${ECOCLAW_ENABLE_EVICTION:-false}"
+  local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-true}"
   if [[ ! -f "${config_path}" ]]; then
     echo "WARN: openclaw config not found, skip plugin runtime config sanitize: ${config_path}" >&2
     return 0
   fi
 
-  python3 - "${config_path}" "${enable_eviction}" <<'SANITIZE_PY'
+  python3 - "${config_path}" "${enable_eviction}" "${enable_reduction}" <<'SANITIZE_PY'
 import json
 import os
 import sys
 
-config_path, enable_eviction_raw = sys.argv[1:3]
+config_path, enable_eviction_raw, enable_reduction_raw = sys.argv[1:4]
 enable_eviction = str(enable_eviction_raw).strip().lower() in ("1", "true", "yes", "on")
+enable_reduction = str(enable_reduction_raw).strip().lower() in ("1", "true", "yes", "on")
 
 with open(config_path, "r", encoding="utf-8") as f:
     cfg = json.load(f)
@@ -515,6 +533,7 @@ allowed_top_level = {
     "proxyPort",
     "proxyBaseUrl",
     "proxyApiKey",
+    "contextEngine",
     "modules",
     "eviction",
     "reduction",
@@ -526,6 +545,13 @@ for key in list(tokenpilot_cfg.keys()):
 
 tokenpilot_cfg["enabled"] = True
 tokenpilot_cfg["proxyAutostart"] = True
+context_engine = tokenpilot_cfg.get("contextEngine")
+if not isinstance(context_engine, dict):
+    context_engine = {}
+tokenpilot_cfg["contextEngine"] = {
+    "enabled": True,
+    **context_engine,
+}
 
 modules = tokenpilot_cfg.get("modules")
 if not isinstance(modules, dict):
@@ -533,7 +559,7 @@ if not isinstance(modules, dict):
 tokenpilot_cfg["modules"] = {
     "stabilizer": True,
     "policy": True,
-    "reduction": True,
+    "reduction": enable_reduction,
     "eviction": enable_eviction,
 }
 
@@ -543,6 +569,53 @@ with open(tmp_path, "w", encoding="utf-8") as f:
     f.write("\n")
 os.replace(tmp_path, config_path)
 SANITIZE_PY
+}
+
+ensure_pinchbench_exec_approvals() {
+  local approvals_path="${TOKENPILOT_EXEC_APPROVALS_PATH:-${ECOCLAW_EXEC_APPROVALS_PATH:-${HOME}/.openclaw/exec-approvals.json}}"
+  mkdir -p "$(dirname "${approvals_path}")"
+
+  python3 - "${approvals_path}" <<'PINCHBENCH_APPROVALS_PY'
+import json
+import secrets
+import sys
+from pathlib import Path
+
+approvals_path = Path(sys.argv[1])
+
+allowlist = [
+    {"id": "usr_bin_find", "pattern": "/usr/bin/find"},
+    {"id": "usr_bin_ls", "pattern": "/usr/bin/ls"},
+    {"id": "usr_bin_sort", "pattern": "/usr/bin/sort"},
+    {"id": "usr_bin_grep", "pattern": "/usr/bin/grep"},
+    {"id": "usr_bin_head", "pattern": "/usr/bin/head"},
+    {"id": "usr_bin_tail", "pattern": "/usr/bin/tail"},
+    {"id": "usr_bin_wc", "pattern": "/usr/bin/wc"},
+    {"id": "usr_bin_cut", "pattern": "/usr/bin/cut"},
+    {"id": "usr_bin_tr", "pattern": "/usr/bin/tr"},
+    {"id": "usr_bin_uniq", "pattern": "/usr/bin/uniq"},
+]
+
+if approvals_path.exists():
+    try:
+        data = json.loads(approvals_path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+else:
+    data = {}
+
+data["version"] = 1
+socket_cfg = data.setdefault("socket", {})
+socket_cfg["path"] = str(approvals_path.with_suffix(".sock"))
+socket_cfg["token"] = socket_cfg.get("token") or secrets.token_urlsafe(24)
+data["defaults"] = data.get("defaults") or {}
+agents = data.setdefault("agents", {})
+wildcard = agents.setdefault("*", {})
+wildcard["allowlist"] = allowlist
+
+approvals_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+print(f"Ensured PinchBench exec approvals: {approvals_path}")
+PINCHBENCH_APPROVALS_PY
 }
 
 validate_openclaw_runtime_config() {
@@ -826,9 +899,12 @@ recover_stale_openclaw_config_backup() {
 
 ensure_openclaw_gateway_running() {
   normalize_openclaw_runtime_env
-  ensure_plugin_runtime_config
-  sanitize_plugin_runtime_config
-  validate_openclaw_runtime_config
+  local skip_method_runtime_patch="${PINCHBENCH_SKIP_METHOD_RUNTIME_PATCH:-false}"
+  if [[ ! "${skip_method_runtime_patch}" =~ ^(true|1|yes)$ ]]; then
+    ensure_plugin_runtime_config
+    sanitize_plugin_runtime_config
+    validate_openclaw_runtime_config
+  fi
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
   local force_restart="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}"
   local gateway_port="${ECOCLAW_GATEWAY_PORT:-}"
@@ -852,6 +928,7 @@ PY
     nohup env \
       HOME="${HOME}" \
       OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH}" \
+      OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
       ECOCLAW_UPSTREAM_HTTP_PROXY="${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" \
@@ -862,7 +939,9 @@ PY
     local attempts=0
     while [[ ${attempts} -lt 30 ]]; do
       if openclaw gateway health >/dev/null 2>&1; then
-        assert_method_runtime_config
+        if [[ ! "${skip_method_runtime_patch}" =~ ^(true|1|yes)$ ]]; then
+          assert_method_runtime_config
+        fi
         echo "OpenClaw gateway restarted (pid=${gateway_pid})"
         return 0
       fi
@@ -878,6 +957,7 @@ PY
     nohup env \
       HOME="${HOME}" \
       OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH}" \
+      OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
       ECOCLAW_UPSTREAM_HTTP_PROXY="${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" \
@@ -888,7 +968,9 @@ PY
     local attempts=0
     while [[ ${attempts} -lt 20 ]]; do
       if openclaw gateway health >/dev/null 2>&1; then
-        assert_method_runtime_config
+        if [[ ! "${skip_method_runtime_patch}" =~ ^(true|1|yes)$ ]]; then
+          assert_method_runtime_config
+        fi
         echo "OpenClaw gateway is ready (pid=${gateway_pid})"
         return 0
       fi
@@ -896,14 +978,18 @@ PY
       sleep 1
     done
     if openclaw gateway health >/dev/null 2>&1; then
-      assert_method_runtime_config
+      if [[ ! "${skip_method_runtime_patch}" =~ ^(true|1|yes)$ ]]; then
+        assert_method_runtime_config
+      fi
       echo "OpenClaw gateway became reachable after startup race."
       return 0
     fi
     echo "ERROR: OpenClaw gateway failed to become reachable. See /tmp/openclaw_gateway.log" >&2
     return 1
   fi
-  assert_method_runtime_config
+  if [[ ! "${skip_method_runtime_patch}" =~ ^(true|1|yes)$ ]]; then
+    assert_method_runtime_config
+  fi
   echo "OpenClaw gateway is reachable"
 }
 

@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 import re
+import stat
 import subprocess
 import time
 import fcntl
@@ -24,6 +25,12 @@ logger = logging.getLogger(__name__)
 MAX_OPENCLAW_MESSAGE_CHARS = int(os.environ.get("PINCHBENCH_MAX_MSG_CHARS", "32000"))
 CONTEXT_HASH_PREFIX_CHARS = int(os.environ.get("PINCHBENCH_CONTEXT_HASH_PREFIX_CHARS", "1024"))
 CONTEXT_RECENT_MESSAGES = int(os.environ.get("PINCHBENCH_CONTEXT_RECENT_MESSAGES", "4"))
+STORE_LLM_CALL_IO = os.environ.get("PINCHBENCH_STORE_LLM_CALL_IO", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 OPENCLAW_AGENT_LOCAL = os.environ.get("OPENCLAW_AGENT_LOCAL", "false").strip().lower() in {
     "1",
     "true",
@@ -68,6 +75,9 @@ OPENCLAW_GATEWAY_STABLE_POLL_S = float(
 OPENCLAW_GATEWAY_STABLE_MAX_WAIT_S = float(
     os.environ.get("PINCHBENCH_OPENCLAW_GATEWAY_STABLE_MAX_WAIT_S", "12.0")
 )
+PINCHBENCH_TMP_ROOT = Path(
+    os.environ.get("PINCHBENCH_TMP_ROOT", "/tmp/pinchbench")
+).resolve()
 
 
 def _wait_for_gateway_stability() -> bool:
@@ -86,6 +96,7 @@ def _wait_for_gateway_stability() -> bool:
                 text=True,
                 check=False,
                 timeout=5,
+                env=_build_openclaw_subprocess_env(),
             )
             if result.returncode == 0:
                 stable += 1
@@ -97,6 +108,23 @@ def _wait_for_gateway_stability() -> bool:
             stable = 0
         time.sleep(poll_s)
     return False
+
+
+def _build_openclaw_subprocess_env() -> Dict[str, str]:
+    env = os.environ.copy()
+    if "HOME" in os.environ:
+        env["HOME"] = os.environ["HOME"]
+    if "OPENCLAW_CONFIG_PATH" in os.environ:
+        env["OPENCLAW_CONFIG_PATH"] = os.environ["OPENCLAW_CONFIG_PATH"]
+        env.setdefault("PINCHBENCH_OPENCLAW_CONFIG_PATH", os.environ["OPENCLAW_CONFIG_PATH"])
+    if "OPENCLAW_STATE_DIR" in os.environ:
+        env["OPENCLAW_STATE_DIR"] = os.environ["OPENCLAW_STATE_DIR"]
+        env.setdefault("PINCHBENCH_OPENCLAW_STATE_DIR", os.environ["OPENCLAW_STATE_DIR"])
+    if "XDG_CACHE_HOME" in os.environ:
+        env["XDG_CACHE_HOME"] = os.environ["XDG_CACHE_HOME"]
+    if "XDG_CONFIG_HOME" in os.environ:
+        env["XDG_CONFIG_HOME"] = os.environ["XDG_CONFIG_HOME"]
+    return env
 
 
 @contextmanager
@@ -216,6 +244,34 @@ def _build_call_context_detail(
     }
 
 
+def _build_call_io_snapshot(
+    transcript: List[Dict[str, Any]],
+    assistant_entry_index: int,
+) -> Dict[str, Any]:
+    context_messages: List[Dict[str, Any]] = []
+    for entry in transcript[:assistant_entry_index]:
+        if entry.get("type") != "message":
+            continue
+        msg = entry.get("message", {}) if isinstance(entry.get("message"), dict) else {}
+        context_messages.append(
+            {
+                "role": str(msg.get("role") or "unknown"),
+                "content": _message_content_to_text(msg.get("content")),
+            }
+        )
+
+    assistant_entry = transcript[assistant_entry_index]
+    assistant_message = (
+        assistant_entry.get("message", {})
+        if isinstance(assistant_entry.get("message"), dict)
+        else {}
+    )
+    return {
+        "context_messages": context_messages,
+        "assistant_output": _message_content_to_text(assistant_message.get("content")),
+    }
+
+
 
 def _get_agent_workspace(agent_id: str) -> Path | None:
     """Get the workspace path for an agent from OpenClaw config."""
@@ -225,6 +281,7 @@ def _get_agent_workspace(agent_id: str) -> Path | None:
             capture_output=True,
             text=True,
             check=False,
+            env=_build_openclaw_subprocess_env(),
         )
         if list_result.returncode != 0:
             return None
@@ -304,6 +361,7 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
                     capture_output=True,
                     text=True,
                     check=False,
+                    env=_build_openclaw_subprocess_env(),
                 )
 
         logger.info("Creating OpenClaw agent %s", agent_id)
@@ -323,6 +381,7 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
                 capture_output=True,
                 text=True,
                 check=False,
+                env=_build_openclaw_subprocess_env(),
             )
         except FileNotFoundError:
             logger.error("openclaw CLI not found while creating agent")
@@ -354,26 +413,36 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
 
 def cleanup_agent_sessions(agent_id: str) -> None:
     """Remove stored session transcripts for an agent to avoid unbounded growth."""
-    agent_dir = _get_agent_store_dir(agent_id)
-    sessions_dir = agent_dir / "sessions"
+    return
+
+
+def reset_agent_session_store(agent_id: str) -> None:
+    """Clear an agent's persisted session store before starting a fresh benchmark run."""
+    sessions_dir = _get_agent_store_dir(agent_id) / "sessions"
     if not sessions_dir.exists():
         return
+
     removed = 0
-    for pattern in ("*.jsonl", "*.jsonl.lock"):
-        for path in sessions_dir.glob(pattern):
-            try:
+    for path in sessions_dir.iterdir():
+        try:
+            if path.is_file() or path.is_symlink():
                 path.unlink()
                 removed += 1
-            except OSError as exc:
-                logger.warning("Failed to remove session file %s: %s", path, exc)
-    sessions_store = sessions_dir / "sessions.json"
-    if sessions_store.exists():
-        try:
-            sessions_store.unlink()
-        except OSError as exc:
-            logger.warning("Failed to remove session store %s: %s", sessions_store, exc)
+        except OSError:
+            logger.warning("Failed to remove stale session store entry: %s", path)
     if removed:
-        logger.info("Removed %s old OpenClaw session transcripts for %s", removed, agent_id)
+        logger.info("Removed %s stale OpenClaw session store entries for %s", removed, agent_id)
+
+
+_BOOTSTRAP_FILES = ["SOUL.md", "BOOTSTRAP.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md", "TOOLS.md"]
+
+
+def _remove_readonly(func, path, _):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except OSError:
+        pass
 
 
 def prepare_task_workspace(
@@ -398,13 +467,22 @@ def prepare_task_workspace(
     if workspace is None:
         # Fallback to task-specific workspace if agent workspace not found
         logger.warning("Could not find agent workspace, using fallback")
-        workspace = Path(f"/tmp/pinchbench/{run_id}/{task.task_id}")
+        workspace = PINCHBENCH_TMP_ROOT / run_id / task.task_id
 
     # In persistent-workspace mode we intentionally accumulate filesystem state
-    # across tasks. Otherwise, reset to a clean workspace.
+    # across tasks. Otherwise, reset to a clean workspace but preserve bootstrap files.
+    saved_bootstrap: dict[str, bytes] = {}
     if workspace.exists() and not preserve_existing:
-        shutil.rmtree(workspace)
+        for fname in _BOOTSTRAP_FILES:
+            fpath = workspace / fname
+            if fpath.exists():
+                saved_bootstrap[fname] = fpath.read_bytes()
+        shutil.rmtree(workspace, onerror=_remove_readonly)
     workspace.mkdir(parents=True, exist_ok=True)
+
+    # Restore bootstrap files
+    for fname, content in saved_bootstrap.items():
+        (workspace / fname).write_bytes(content)
 
     for file_spec in task.workspace_files:
         if "content" in file_spec:
@@ -438,6 +516,143 @@ def _get_agent_store_dir(agent_id: str) -> Path:
     if normalized_dir.exists():
         return normalized_dir
     return direct_dir
+
+
+def _get_tokenpilot_plugin_state_dir() -> Path | None:
+    state_dir = os.environ.get("OPENCLAW_STATE_DIR")
+    if not state_dir:
+        return None
+    base = Path(state_dir)
+    candidates = [
+        base / "tokenpilot-plugin-state" / "ecoclaw",
+        base / "tokenpilot-plugin-state" / "tokenpilot",
+        base / "ecoclaw-plugin-state" / "ecoclaw",
+        base / "ecoclaw-plugin-state" / "tokenpilot",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _maybe_log_openclaw_runtime_debug(agent_id: str, workspace: Path) -> None:
+    if os.environ.get("PINCHBENCH_DEBUG_OPENCLAW_RUNTIME", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return
+    env_snapshot = {
+        "HOME": os.environ.get("HOME", ""),
+        "OPENCLAW_CONFIG_PATH": os.environ.get("OPENCLAW_CONFIG_PATH", ""),
+        "OPENCLAW_STATE_DIR": os.environ.get("OPENCLAW_STATE_DIR", ""),
+        "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME", ""),
+        "XDG_CONFIG_HOME": os.environ.get("XDG_CONFIG_HOME", ""),
+        "PWD": str(workspace),
+    }
+    logger.info("[openclaw-debug] runtime env for %s: %s", agent_id, env_snapshot)
+    logger.info(
+        "[openclaw-debug] resolved agent store dir for %s: %s",
+        agent_id,
+        _get_agent_store_dir(agent_id),
+    )
+    try:
+        config_result = subprocess.run(
+            ["openclaw", "config", "file"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(workspace),
+            env=_build_openclaw_subprocess_env(),
+        )
+        logger.info(
+            "[openclaw-debug] openclaw config file rc=%s stdout=%r stderr=%r",
+            config_result.returncode,
+            config_result.stdout.strip(),
+            config_result.stderr.strip(),
+        )
+    except Exception as exc:
+        logger.warning("[openclaw-debug] failed to inspect config file: %s", exc)
+    try:
+        agents_result = subprocess.run(
+            ["openclaw", "agents", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(workspace),
+            env=_build_openclaw_subprocess_env(),
+        )
+        logger.info(
+            "[openclaw-debug] openclaw agents list rc=%s stdout=%r stderr=%r",
+            agents_result.returncode,
+            agents_result.stdout[-4000:],
+            agents_result.stderr[-2000:],
+        )
+    except Exception as exc:
+        logger.warning("[openclaw-debug] failed to inspect agents list: %s", exc)
+
+
+def _find_recent_canonical_state_path(started_at: float) -> Path | None:
+    plugin_state_dir = _get_tokenpilot_plugin_state_dir()
+    if plugin_state_dir is None:
+        return None
+    canonical_dir = plugin_state_dir / "canonical-state"
+    if not canonical_dir.exists():
+        return None
+    candidates = list(canonical_dir.glob("*.json"))
+    if not candidates:
+        return None
+    tolerance_seconds = 15.0
+    recent_candidates = [
+        path for path in candidates if path.stat().st_mtime >= (started_at - tolerance_seconds)
+    ]
+    pool = recent_candidates or candidates
+    return max(pool, key=lambda path: path.stat().st_mtime)
+
+
+def _canonical_state_to_transcript(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    transcript: List[Dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "unknown")
+        content = message.get("content")
+        transcript.append(
+            {
+                "id": str(message.get("id") or f"canonical-{index}"),
+                "type": "message",
+                "timestamp": message.get("timestamp"),
+                "message": {
+                    "role": role,
+                    "content": content if content is not None else "",
+                    "details": message.get("details", {}),
+                    "toolName": message.get("toolName"),
+                    "toolCallId": message.get("toolCallId"),
+                },
+            }
+        )
+    return transcript
+
+
+def _load_canonical_transcript_fallback(started_at: float) -> List[Dict[str, Any]]:
+    canonical_path = _find_recent_canonical_state_path(started_at)
+    if canonical_path is None:
+        return []
+    try:
+        payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to parse canonical state fallback %s: %s", canonical_path, exc)
+        return []
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return []
+    logger.info(
+        "Using TokenPilot canonical-state fallback transcript: %s (%s messages)",
+        canonical_path.name,
+        len(messages),
+    )
+    return _canonical_state_to_transcript(messages)
 
 
 def _resolve_session_store_entry(agent_id: str) -> Optional[Dict[str, Any]]:
@@ -713,24 +928,39 @@ def _load_transcript(
         time.sleep(retry_sleep_s)
 
     if transcript_path is None:
+        fallback_transcript = _load_canonical_transcript_fallback(started_at)
+        if fallback_transcript:
+            return fallback_transcript
         sessions_dir = agent_dir / "sessions"
+        resolved_entry = _resolve_session_store_entry(agent_id)
+        resolved_session_file = _resolve_session_file_from_store(agent_id)
+        resolved_session_id = _resolve_session_id_from_store(agent_id)
         if last_pending_locks:
             logger.warning(
-                "Transcript still not ready for agent %s after waiting; lock files remain: %s",
+                "Transcript still not ready for agent %s after waiting; lock files remain: %s | resolved_session_id=%s | resolved_session_file=%s | session_store_entry=%s",
                 agent_id,
                 [path.name for path in last_pending_locks],
+                resolved_session_id,
+                str(resolved_session_file) if resolved_session_file else None,
+                resolved_entry,
             )
         elif sessions_dir.exists():
             all_files = list(sessions_dir.iterdir())
             logger.warning(
-                "Transcript not found for agent %s. Sessions dir contents: %s",
+                "Transcript not found for agent %s. Sessions dir contents: %s | resolved_session_id=%s | resolved_session_file=%s | session_store_entry=%s",
                 agent_id,
                 [f.name for f in all_files],
+                resolved_session_id,
+                str(resolved_session_file) if resolved_session_file else None,
+                resolved_entry,
             )
         else:
             logger.warning(
-                "Transcript not found — sessions dir does not exist: %s",
+                "Transcript not found — sessions dir does not exist: %s | resolved_session_id=%s | resolved_session_file=%s | session_store_entry=%s",
                 sessions_dir,
+                resolved_session_id,
+                str(resolved_session_file) if resolved_session_file else None,
+                resolved_entry,
             )
         return []
 
@@ -963,7 +1193,7 @@ def _extract_llm_calls_from_transcript(transcript: List[Dict[str, Any]]) -> List
         usage = msg.get("usage", {}) if isinstance(msg.get("usage"), dict) else {}
         cost_obj = usage.get("cost", {}) if isinstance(usage.get("cost"), dict) else {}
         context_detail = _build_call_context_detail(transcript, idx)
-        calls.append({
+        call_record = {
             "index": idx,
             "timestamp": msg.get("timestamp") or entry.get("timestamp"),
             "provider": msg.get("provider"),
@@ -977,7 +1207,10 @@ def _extract_llm_calls_from_transcript(transcript: List[Dict[str, Any]]) -> List
             "total_tokens": _to_int(usage.get("totalTokens"), _to_int(usage.get("total_tokens"), 0)),
             "cost_usd": _to_float(cost_obj.get("total"), _to_float(usage.get("cost_usd"), 0.0)),
             "context_detail": context_detail,
-        })
+        }
+        if STORE_LLM_CALL_IO:
+            call_record["call_io"] = _build_call_io_snapshot(transcript, idx)
+        calls.append(call_record)
     return calls
 
 
@@ -1062,7 +1295,7 @@ def execute_openclaw_task(
             task=task,
             agent_id=agent_id,
             workspace_override=agent_workspace,
-            preserve_existing=(session_mode == "continuous"),
+            preserve_existing=False,
         )
         session_id = initial_session_id or f"{task.task_id}_{int(time.time() * 1000)}"
         timeout_seconds = task.timeout_seconds * timeout_multiplier
@@ -1086,6 +1319,7 @@ def execute_openclaw_task(
             run_exit_code = -1
             run_timed_out = False
             try:
+                _maybe_log_openclaw_runtime_debug(agent_id, workspace)
                 command = [
                     "openclaw",
                     "agent",
@@ -1104,6 +1338,7 @@ def execute_openclaw_task(
                     text=True,
                     cwd=str(workspace),
                     check=False,
+                    env=_build_openclaw_subprocess_env(),
                 )
                 run_stdout = result.stdout
                 run_stderr = result.stderr
@@ -1235,6 +1470,23 @@ def execute_openclaw_task(
                             logger.info("      %s (%d bytes)", f.relative_to(workspace), size)
                         except OSError:
                             logger.info("      %s", f.relative_to(workspace))
+        elif not transcript:
+            sessions_dir = _get_agent_store_dir(agent_id) / "sessions"
+            dir_contents = []
+            if sessions_dir.exists():
+                try:
+                    dir_contents = sorted(p.name for p in sessions_dir.iterdir())
+                except OSError:
+                    pass
+            logger.warning(
+                "No transcript captured for %s. exit_code=%s timed_out=%s stdout_preview=%r stderr_preview=%r sessions_dir_contents=%s",
+                task.task_id,
+                exit_code,
+                timed_out,
+                (stdout[:500] if stdout else ""),
+                (stderr[:500] if stderr else ""),
+                dir_contents,
+            )
 
         return {
             "agent_id": agent_id,
