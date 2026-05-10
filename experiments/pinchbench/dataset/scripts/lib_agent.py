@@ -8,6 +8,7 @@ import json
 import hashlib
 import logging
 import os
+import pwd
 import re
 import stat
 import subprocess
@@ -39,7 +40,7 @@ OPENCLAW_AGENT_LOCAL = os.environ.get("OPENCLAW_AGENT_LOCAL", "false").strip().l
 }
 DEFAULT_BENCH_OPENCLAW_HOME = Path(
     os.environ.get("TOKENPILOT_OPENCLAW_HOME")
-    or os.environ.get("ECOCLAW_OPENCLAW_HOME", "/mnt/20t/xubuqiang")
+    or "/mnt/20t/xubuqiang"
 )
 DEFAULT_BENCH_OPENCLAW_STATE_DIR = DEFAULT_BENCH_OPENCLAW_HOME / ".openclaw"
 if not os.environ.get("OPENCLAW_CONFIG_PATH"):
@@ -332,10 +333,11 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
     with _openclaw_agent_lock():
         try:
             list_result = subprocess.run(
-                ["openclaw", "agents", "list"],
+                _openclaw_cmd("agents", "list"),
                 capture_output=True,
                 text=True,
                 check=False,
+                env=_build_openclaw_subprocess_env(),
             )
         except FileNotFoundError:
             logger.error("openclaw CLI not found while listing agents")
@@ -511,19 +513,48 @@ def prepare_task_workspace(
     return workspace
 
 
-def _get_agent_store_dir(agent_id: str) -> Path:
+def _candidate_agent_store_dirs(agent_id: str) -> List[Path]:
+    candidates: List[Path] = []
+
     state_dir = os.environ.get("OPENCLAW_STATE_DIR")
     if state_dir:
-        base_dir = Path(state_dir) / "agents"
-    else:
-        base_dir = Path.home() / ".openclaw" / "agents"
-    direct_dir = base_dir / agent_id
-    if direct_dir.exists():
-        return direct_dir
-    normalized_dir = base_dir / agent_id.replace(":", "-")
-    if normalized_dir.exists():
-        return normalized_dir
-    return direct_dir
+        base = Path(state_dir) / "agents"
+        candidates.append(base / agent_id)
+        candidates.append(base / agent_id.replace(":", "-"))
+
+    home_base = Path.home() / ".openclaw" / "agents"
+    candidates.append(home_base / agent_id)
+    candidates.append(home_base / agent_id.replace(":", "-"))
+
+    try:
+        real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+        real_base = real_home / ".openclaw" / "agents"
+        candidates.append(real_base / agent_id)
+        candidates.append(real_base / agent_id.replace(":", "-"))
+    except Exception:
+        pass
+
+    deduped: List[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _get_agent_store_dir(agent_id: str) -> Path:
+    candidates = _candidate_agent_store_dirs(agent_id)
+    for candidate in candidates:
+        sessions_dir = candidate / "sessions"
+        if sessions_dir.exists():
+            return candidate
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _get_tokenpilot_plugin_state_dir() -> Path | None:
@@ -601,6 +632,78 @@ def _maybe_log_openclaw_runtime_debug(agent_id: str, workspace: Path) -> None:
         logger.warning("[openclaw-debug] failed to inspect agents list: %s", exc)
 
 
+def _maybe_log_transcript_resolution_debug(agent_id: str) -> None:
+    if os.environ.get("PINCHBENCH_DEBUG_OPENCLAW_RUNTIME", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return
+
+    try:
+        real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except Exception:
+        real_home = Path("/home/xubuqiang")
+
+    chosen_agent_dir = _get_agent_store_dir(agent_id)
+    runtime_state_dir = Path(os.environ.get("OPENCLAW_STATE_DIR", ""))
+    runtime_agent_dir = runtime_state_dir / "agents" / agent_id.replace(":", "-") if str(runtime_state_dir) else None
+    global_agent_dir = real_home / ".openclaw" / "agents" / agent_id.replace(":", "-")
+
+    def _describe_sessions(agent_dir: Path | None) -> Dict[str, Any]:
+        if agent_dir is None:
+            return {"agentDir": None}
+        sessions_dir = agent_dir / "sessions"
+        sessions_json = sessions_dir / "sessions.json"
+        payload = None
+        payload_keys: List[str] = []
+        first_entry = None
+        if sessions_json.exists():
+            try:
+                payload = json.loads(sessions_json.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    payload_keys = list(payload.keys())[:5]
+                    if payload_keys:
+                        first_entry = payload.get(payload_keys[0])
+            except Exception as exc:
+                first_entry = {"parseError": str(exc)}
+        dir_contents: List[str] = []
+        if sessions_dir.exists():
+            try:
+                dir_contents = sorted(p.name for p in sessions_dir.iterdir())[:10]
+            except Exception as exc:
+                dir_contents = [f"<iter-error:{exc}>"]
+        return {
+            "agentDir": str(agent_dir),
+            "sessionsDirExists": sessions_dir.exists(),
+            "sessionsJsonExists": sessions_json.exists(),
+            "dirContents": dir_contents,
+            "payloadKeys": payload_keys,
+            "firstEntry": first_entry,
+        }
+
+    logger.info(
+        "[openclaw-debug] transcript resolution candidates for %s: chosen=%s runtime=%s global=%s",
+        agent_id,
+        chosen_agent_dir,
+        runtime_agent_dir,
+        global_agent_dir,
+    )
+    logger.info(
+        "[openclaw-debug] chosen sessions: %s",
+        _describe_sessions(chosen_agent_dir),
+    )
+    logger.info(
+        "[openclaw-debug] runtime sessions: %s",
+        _describe_sessions(runtime_agent_dir),
+    )
+    logger.info(
+        "[openclaw-debug] global sessions: %s",
+        _describe_sessions(global_agent_dir),
+    )
+
+
 def _find_recent_canonical_state_path(started_at: float) -> Path | None:
     plugin_state_dir = _get_tokenpilot_plugin_state_dir()
     if plugin_state_dir is None:
@@ -664,18 +767,6 @@ def _load_canonical_transcript_fallback(started_at: float) -> List[Dict[str, Any
 
 
 def _resolve_session_store_entry(agent_id: str) -> Optional[Dict[str, Any]]:
-    agent_dir = _get_agent_store_dir(agent_id)
-    sessions_store = agent_dir / "sessions" / "sessions.json"
-    if not sessions_store.exists():
-        return None
-    try:
-        sessions_payload = json.loads(sessions_store.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        logger.warning("Failed to parse sessions store: %s", exc)
-        return None
-    if not isinstance(sessions_payload, dict):
-        return None
-
     normalized_id = agent_id.replace(":", "-")
     preferred_keys = [
         f"agent:{agent_id}:main",
@@ -683,23 +774,39 @@ def _resolve_session_store_entry(agent_id: str) -> Optional[Dict[str, Any]]:
         f"agent:{normalized_id}:main",
         f"agent:{normalized_id}:default",
     ]
-    for key in preferred_keys:
-        entry = sessions_payload.get(key)
-        if isinstance(entry, dict) and entry.get("sessionId"):
-            return entry
 
-    newest_entry = None
-    newest_timestamp = -1
-    for entry in sessions_payload.values():
-        if not isinstance(entry, dict):
+    best_entry: Optional[Dict[str, Any]] = None
+    best_timestamp = -1
+
+    for agent_dir in _candidate_agent_store_dirs(agent_id):
+        sessions_store = agent_dir / "sessions" / "sessions.json"
+        if not sessions_store.exists():
             continue
-        if "sessionId" not in entry:
+        try:
+            sessions_payload = json.loads(sessions_store.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse sessions store %s: %s", sessions_store, exc)
             continue
-        updated_at = entry.get("updatedAt")
-        if isinstance(updated_at, (int, float)) and updated_at > newest_timestamp:
-            newest_timestamp = updated_at
-            newest_entry = entry
-    return newest_entry if isinstance(newest_entry, dict) else None
+        if not isinstance(sessions_payload, dict):
+            continue
+
+        for key in preferred_keys:
+            entry = sessions_payload.get(key)
+            if isinstance(entry, dict) and entry.get("sessionId"):
+                return entry
+
+        for entry in sessions_payload.values():
+            if not isinstance(entry, dict):
+                continue
+            if "sessionId" not in entry:
+                continue
+            updated_at = entry.get("updatedAt")
+            ts = updated_at if isinstance(updated_at, (int, float)) else -1
+            if ts > best_timestamp:
+                best_timestamp = ts
+                best_entry = entry
+
+    return best_entry if isinstance(best_entry, dict) else None
 
 
 def _resolve_session_id_from_store(agent_id: str) -> str | None:
@@ -824,6 +931,7 @@ def _load_transcript(
     *,
     log_success: bool = True,
 ) -> List[Dict[str, Any]]:
+    _maybe_log_transcript_resolution_debug(agent_id)
     agent_dir = _get_agent_store_dir(agent_id)
     transcript_path = None
     last_pending_locks: List[Path] = []
@@ -858,6 +966,18 @@ def _load_transcript(
     while True:
         # 1. Prefer the concrete transcript path from sessions.json when available.
         resolved_session_file = _resolve_session_file_from_store(agent_id)
+        if os.environ.get("PINCHBENCH_DEBUG_OPENCLAW_RUNTIME", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } and attempt == 0:
+            logger.info(
+                "[openclaw-debug] resolved sessionFile for %s: %s exists=%s",
+                agent_id,
+                resolved_session_file,
+                resolved_session_file.exists() if resolved_session_file is not None else False,
+            )
         if resolved_session_file and resolved_session_file.exists():
             transcript_path = resolved_session_file
             if log_success:
@@ -870,6 +990,17 @@ def _load_transcript(
 
         # 2. Try sessions.json sessionId — OpenClaw writes the real UUID / logical id here
         resolved_session_id = _resolve_session_id_from_store(agent_id)
+        if os.environ.get("PINCHBENCH_DEBUG_OPENCLAW_RUNTIME", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } and attempt == 0:
+            logger.info(
+                "[openclaw-debug] resolved sessionId for %s: %s",
+                agent_id,
+                resolved_session_id,
+            )
         if resolved_session_id:
             candidate = agent_dir / "sessions" / f"{resolved_session_id}.jsonl"
             if candidate.exists():

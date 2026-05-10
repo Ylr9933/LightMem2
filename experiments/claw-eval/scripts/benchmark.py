@@ -43,7 +43,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TokenPilot claw-eval adapter scaffold")
     default_openclaw_home = (
         os.environ.get("TOKENPILOT_OPENCLAW_HOME")
-        or os.environ.get("ECOCLAW_OPENCLAW_HOME")
         or str(Path.home())
     )
     parser.add_argument("--tasks-dir", default=str(Path(__file__).resolve().parents[1] / "dataset" / "tasks"))
@@ -93,7 +92,6 @@ def _resolve_openclaw_config_path(config_arg: str) -> Path:
 
     configured_home = (
         os.environ.get("TOKENPILOT_OPENCLAW_HOME")
-        or os.environ.get("ECOCLAW_OPENCLAW_HOME")
     )
     if configured_home:
         fallback = Path(configured_home).expanduser() / ".openclaw" / "openclaw.json"

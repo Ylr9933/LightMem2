@@ -69,7 +69,6 @@ def main() -> int:
     judge_model = (
         args.judge
         or os.environ.get("TOKENPILOT_JUDGE")
-        or os.environ.get("ECOCLAW_JUDGE")
         or "openrouter/anthropic/claude-opus-4.5"
     )
 

@@ -113,7 +113,7 @@ print(s.getsockname()[1])
 s.close()
 PY
 )"
-  export ECOCLAW_GATEWAY_PORT="${TMP_GATEWAY_PORT}"
+  export TOKENPILOT_GATEWAY_PORT="${TMP_GATEWAY_PORT}"
   python3 - "${OPENCLAW_CONFIG_PATH}" "${TMP_GATEWAY_PORT}" "${TMP_PROXY_PORT}" <<'PY'
 import json
 import sys

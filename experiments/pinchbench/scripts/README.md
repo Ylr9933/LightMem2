@@ -37,13 +37,10 @@ Preferred variables are:
 - `TOKENPILOT_SESSION_MODE`
 - `TOKENPILOT_FORCE_GATEWAY_RESTART`
 
-Legacy fallback variables are:
+Active runtime variables are:
 
-- `ECOCLAW_BASE_URL`
-- `ECOCLAW_API_KEY`
-
-The active scripts now dual-read `TOKENPILOT_*` first and fall back to
-`ECOCLAW_*`.
+- `TOKENPILOT_BASE_URL`
+- `TOKENPILOT_API_KEY`
 
 If you want to use unprefixed model aliases such as `gpt-5.4-mini`, also set:
 
@@ -53,7 +50,6 @@ The migrated mainline resolves the dataset directory in this order:
 
 1. `PINCHBENCH_DATASET_DIR`
 2. `experiments/pinchbench/dataset` in the current repository
-3. legacy `ECOCLAW_SKILL_DIR` fallback
 
 Do not point the active method path back to the external bench repository unless
 you are explicitly debugging legacy behavior.

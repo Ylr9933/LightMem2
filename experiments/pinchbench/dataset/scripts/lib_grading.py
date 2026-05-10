@@ -583,13 +583,11 @@ def _judge_via_runtime_compat(prompt: str, model: str, timeout_seconds: float) -
     base_url = (
         os.environ.get(f"PINCHBENCH_MODEL_{model_key}_BASE_URL")
         or os.environ.get("TOKENPILOT_BASE_URL")
-        or os.environ.get("ECOCLAW_BASE_URL")
         or os.environ.get("OPENAI_BASE_URL")
     )
     api_key = (
         os.environ.get(f"PINCHBENCH_MODEL_{model_key}_API_KEY")
         or os.environ.get("TOKENPILOT_API_KEY")
-        or os.environ.get("ECOCLAW_API_KEY")
         or os.environ.get("OPENAI_API_KEY")
     )
     if not base_url or not api_key:

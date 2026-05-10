@@ -36,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="A/B evaluate distilled prompt injection with claw-eval graders")
     default_openclaw_home = (
         os.environ.get("TOKENPILOT_OPENCLAW_HOME")
-        or os.environ.get("ECOCLAW_OPENCLAW_HOME")
         or str(Path.home())
     )
     parser.add_argument("--tasks-dir", default=str(Path(__file__).resolve().parents[1] / "dataset" / "tasks"))
@@ -155,7 +154,7 @@ def prepare_tmp_openclaw_home(source_home: Path, label: str) -> tuple[Path, Path
     os.environ["XDG_CONFIG_HOME"] = str(tmp_home / ".config")
     os.environ.setdefault("XDG_CACHE_HOME", str(tmp_home / ".cache"))
     os.environ.setdefault("UV_CACHE_DIR", "/tmp/uv-cache")
-    os.environ["ECOCLAW_GATEWAY_PORT"] = str(gateway_port)
+    os.environ["TOKENPILOT_GATEWAY_PORT"] = str(gateway_port)
     Path(os.environ["XDG_CONFIG_HOME"]).mkdir(parents=True, exist_ok=True)
     Path(os.environ["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
     Path(os.environ["UV_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)

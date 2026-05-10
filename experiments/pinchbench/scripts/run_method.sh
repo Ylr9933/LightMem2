@@ -42,13 +42,13 @@ export PINCHBENCH_TMP_ROOT
 if [[ "${PINCHBENCH_TMP_ROOT}" != "/tmp/pinchbench" && -d "/tmp/pinchbench" ]]; then
   rm -rf /tmp/pinchbench 2>/dev/null || true
 fi
-MODEL_LIKE="${MODEL:-${TOKENPILOT_MODEL:-${ECOCLAW_MODEL:-tokenpilot/gpt-5.4-mini}}}"
-JUDGE_LIKE="${JUDGE:-${TOKENPILOT_JUDGE:-${ECOCLAW_JUDGE:-tokenpilot/gpt-5.4-mini}}}"
+MODEL_LIKE="${MODEL:-${TOKENPILOT_MODEL:-tokenpilot/gpt-5.4-mini}}"
+JUDGE_LIKE="${JUDGE:-${TOKENPILOT_JUDGE:-tokenpilot/gpt-5.4-mini}}"
 apply_model_runtime_env "${MODEL_LIKE}"
 require_method_runtime_env
 apply_runtime_env
 if [[ "${PHASE}" != "eval" ]]; then
-  export ECOCLAW_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-true}}"
+  export TOKENPILOT_FORCE_GATEWAY_RESTART="${TOKENPILOT_FORCE_GATEWAY_RESTART:-true}"
   recover_stale_openclaw_config_backup
   ensure_plugin_runtime_config
   sanitize_plugin_runtime_config
@@ -68,11 +68,11 @@ fi
 
 RESOLVED_MODEL="$(resolve_model_alias "${MODEL_LIKE}")"
 RESOLVED_JUDGE="$(resolve_model_alias "${JUDGE_LIKE}")"
-RESOLVED_SUITE="${SUITE:-${TOKENPILOT_SUITE:-${ECOCLAW_SUITE:-automated-only}}}"
-RESOLVED_RUNS="${RUNS:-${TOKENPILOT_RUNS:-${ECOCLAW_RUNS:-3}}}"
-RESOLVED_TIMEOUT="${TIMEOUT_MULTIPLIER:-${TOKENPILOT_TIMEOUT_MULTIPLIER:-${ECOCLAW_TIMEOUT_MULTIPLIER:-1.0}}}"
-RESOLVED_PARALLEL="${PARALLEL:-${TOKENPILOT_PARALLEL:-${ECOCLAW_PARALLEL:-1}}}"
-RESOLVED_SESSION_MODE="${SESSION_MODE:-${TOKENPILOT_SESSION_MODE:-${ECOCLAW_SESSION_MODE:-isolated}}}"
+RESOLVED_SUITE="${SUITE:-${TOKENPILOT_SUITE:-automated-only}}"
+RESOLVED_RUNS="${RUNS:-${TOKENPILOT_RUNS:-3}}"
+RESOLVED_TIMEOUT="${TIMEOUT_MULTIPLIER:-${TOKENPILOT_TIMEOUT_MULTIPLIER:-1.0}}"
+RESOLVED_PARALLEL="${PARALLEL:-${TOKENPILOT_PARALLEL:-1}}"
+RESOLVED_SESSION_MODE="${SESSION_MODE:-${TOKENPILOT_SESSION_MODE:-isolated}}"
 
 OUTPUT_DIR="${OUTPUT_DIR_OVERRIDE:-${PINCHBENCH_ROOT}/save/${RESOLVED_SESSION_MODE}/method/raw}"
 LOG_DIR="${PINCHBENCH_ROOT}/save/logs"

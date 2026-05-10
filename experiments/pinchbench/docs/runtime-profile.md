@@ -73,8 +73,8 @@ Instead, it expects the experiment owner to provide:
 - `PINCHBENCH_MODEL_<MODEL_NAME>_BASE_URL`
 - `PINCHBENCH_MODEL_<MODEL_NAME>_API_KEY`
 - optional `PINCHBENCH_MODEL_<MODEL_NAME>_PROVIDER_PREFIX`
-- fallback `ECOCLAW_BASE_URL`
-- fallback `ECOCLAW_API_KEY`
+- runtime `TOKENPILOT_BASE_URL`
+- runtime `TOKENPILOT_API_KEY`
 
 and, when using shorthand model aliases such as `gpt-5.4-mini`:
 

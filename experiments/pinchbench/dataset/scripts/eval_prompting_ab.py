@@ -121,12 +121,6 @@ def import_runtime_envs() -> None:
     repo_root = Path(__file__).resolve().parents[5]
     import_dotenv(root / ".env")
     import_dotenv(repo_root / ".env")
-    for key, value in list(os.environ.items()):
-        if not key.startswith("TOKENPILOT_"):
-            continue
-        legacy = f"ECOCLAW_{key.removeprefix('TOKENPILOT_')}"
-        if legacy not in os.environ or not os.environ.get(legacy):
-            os.environ[legacy] = value
 
 
 def model_env_key(model_like: str) -> str:
@@ -142,9 +136,9 @@ def apply_model_runtime_env(model_like: str) -> None:
     key_var = f"PINCHBENCH_MODEL_{model_key}_API_KEY"
     provider_var = f"PINCHBENCH_MODEL_{model_key}_PROVIDER_PREFIX"
     if os.environ.get(base_var):
-        os.environ["ECOCLAW_BASE_URL"] = os.environ[base_var]
+        os.environ["TOKENPILOT_BASE_URL"] = os.environ[base_var]
     if os.environ.get(key_var):
-        os.environ["ECOCLAW_API_KEY"] = os.environ[key_var]
+        os.environ["TOKENPILOT_API_KEY"] = os.environ[key_var]
     if os.environ.get(provider_var):
         os.environ["PINCHBENCH_MODEL_PROVIDER_PREFIX"] = os.environ[provider_var]
 
@@ -164,10 +158,10 @@ def patch_baseline_runtime_config(
     provider_prefix: str,
 ) -> None:
     cfg = load_json(config_path)
-    baseline_base_url = str(os.environ.get("ECOCLAW_BASE_URL", "")).strip()
-    baseline_api_key = str(os.environ.get("ECOCLAW_API_KEY", "")).strip()
+    baseline_base_url = str(os.environ.get("TOKENPILOT_BASE_URL", "")).strip()
+    baseline_api_key = str(os.environ.get("TOKENPILOT_API_KEY", "")).strip()
     if not baseline_base_url or not baseline_api_key:
-        raise RuntimeError("Missing ECOCLAW_BASE_URL or ECOCLAW_API_KEY for PinchBench baseline runtime patch")
+        raise RuntimeError("Missing TOKENPILOT_BASE_URL or TOKENPILOT_API_KEY for PinchBench baseline runtime patch")
 
     provider_name = resolved_model.split("/", 1)[0] if "/" in resolved_model else provider_prefix
     if not provider_name:
@@ -213,15 +207,15 @@ def patch_baseline_runtime_config(
 
     tools = cfg.setdefault("tools", {})
     exec_cfg = tools.setdefault("exec", {})
-    exec_cfg["host"] = os.environ.get("TOKENPILOT_EXEC_HOST", os.environ.get("ECOCLAW_EXEC_HOST", "gateway"))
-    exec_cfg["security"] = os.environ.get("TOKENPILOT_EXEC_SECURITY", os.environ.get("ECOCLAW_EXEC_SECURITY", "full"))
-    exec_cfg["ask"] = os.environ.get("TOKENPILOT_EXEC_ASK", os.environ.get("ECOCLAW_EXEC_ASK", "off"))
+    exec_cfg["host"] = os.environ.get("TOKENPILOT_EXEC_HOST", "gateway")
+    exec_cfg["security"] = os.environ.get("TOKENPILOT_EXEC_SECURITY", "full")
+    exec_cfg["ask"] = os.environ.get("TOKENPILOT_EXEC_ASK", "off")
     tools["allow"] = ["memory_fault_recover"]
     tools["deny"] = []
     elevated_cfg = tools.setdefault("elevated", {})
-    elevated_cfg["enabled"] = _is_truthy(os.environ.get("TOKENPILOT_ELEVATED_ENABLED", os.environ.get("ECOCLAW_ELEVATED_ENABLED", "true")))
+    elevated_cfg["enabled"] = _is_truthy(os.environ.get("TOKENPILOT_ELEVATED_ENABLED", "true"))
     allow_from = elevated_cfg.setdefault("allowFrom", {})
-    allow_from[os.environ.get("TOKENPILOT_ELEVATED_ALLOW_FROM", os.environ.get("ECOCLAW_ELEVATED_ALLOW_FROM", "webchat"))] = ["exec"]
+    allow_from[os.environ.get("TOKENPILOT_ELEVATED_ALLOW_FROM", "webchat")] = ["exec"]
 
     models = cfg.setdefault("models", {})
     providers = models.setdefault("providers", {})
@@ -354,13 +348,12 @@ def prepared_openclaw_env(run_root: Path, resolved_model: str, resolved_judge: s
             "PINCHBENCH_OPENCLAW_CONFIG_PATH",
             "PINCHBENCH_OPENCLAW_STATE_DIR",
             "TOKENPILOT_OPENCLAW_HOME",
-            "ECOCLAW_OPENCLAW_HOME",
             "TOKENPILOT_EXEC_APPROVALS_PATH",
         ]
     }
     try:
         if use_tmp:
-            src_home = Path(os.environ.get("TOKENPILOT_OPENCLAW_HOME") or os.environ.get("ECOCLAW_OPENCLAW_HOME") or str(Path.home())).resolve()
+            src_home = Path(os.environ.get("TOKENPILOT_OPENCLAW_HOME") or str(Path.home())).resolve()
             src_state_dir = Path(
                 os.environ.get("OPENCLAW_STATE_DIR")
                 or os.environ.get("PINCHBENCH_OPENCLAW_STATE_DIR")
@@ -383,7 +376,6 @@ def prepared_openclaw_env(run_root: Path, resolved_model: str, resolved_judge: s
                 shutil.copy2(src_config_path, config_path)
             os.environ["HOME"] = str(tmp_home)
             os.environ["TOKENPILOT_OPENCLAW_HOME"] = str(tmp_home)
-            os.environ["ECOCLAW_OPENCLAW_HOME"] = str(tmp_home)
             os.environ["OPENCLAW_CONFIG_PATH"] = str(config_path)
             os.environ["OPENCLAW_STATE_DIR"] = str(state_dir)
             os.environ["PINCHBENCH_OPENCLAW_CONFIG_PATH"] = str(config_path)

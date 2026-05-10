@@ -124,8 +124,8 @@ const NULL_RUNTIME: RuntimeModuleRuntime = {
 export function normalizeConfig(
   raw: unknown,
 ): Required<Omit<PluginRuntimeConfig, "proxyBaseUrl" | "proxyApiKey">> & Pick<PluginRuntimeConfig, "proxyBaseUrl" | "proxyApiKey"> {
-  const envWithAlias = (tokenpilotKey: string, ecoclawKey: string): string =>
-    String(process.env[tokenpilotKey] ?? process.env[ecoclawKey] ?? "").trim();
+  const envValue = (tokenpilotKey: string): string =>
+    String(process.env[tokenpilotKey] ?? "").trim();
   const cfg = (raw ?? {}) as PluginRuntimeConfig;
   const defaultStateDir = defaultPluginStateDir();
   const stateDir = cfg.stateDir ?? defaultStateDir;
@@ -137,27 +137,27 @@ export function normalizeConfig(
   const memory = cfg.memory ?? {};
   const memoryDistillProvider = memory.distillProvider ?? {};
   const memoryEmbedding = memory.embedding ?? {};
-  const envMemoryEmbeddingEnabled = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_ENABLED", "ECOCLAW_MEMORY_EMBEDDING_ENABLED").toLowerCase();
-  const envMemoryEmbeddingBaseUrl = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_BASE_URL", "ECOCLAW_MEMORY_EMBEDDING_BASE_URL");
-  const envMemoryEmbeddingApiKey = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_API_KEY", "ECOCLAW_MEMORY_EMBEDDING_API_KEY");
-  const envMemoryEmbeddingModel = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_MODEL", "ECOCLAW_MEMORY_EMBEDDING_MODEL");
-  const envMemoryEmbeddingInstruction = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_QUERY_INSTRUCTION", "ECOCLAW_MEMORY_EMBEDDING_QUERY_INSTRUCTION");
+  const envMemoryEmbeddingEnabled = envValue("TOKENPILOT_MEMORY_EMBEDDING_ENABLED").toLowerCase();
+  const envMemoryEmbeddingBaseUrl = envValue("TOKENPILOT_MEMORY_EMBEDDING_BASE_URL");
+  const envMemoryEmbeddingApiKey = envValue("TOKENPILOT_MEMORY_EMBEDDING_API_KEY");
+  const envMemoryEmbeddingModel = envValue("TOKENPILOT_MEMORY_EMBEDDING_MODEL");
+  const envMemoryEmbeddingInstruction = envValue("TOKENPILOT_MEMORY_EMBEDDING_QUERY_INSTRUCTION");
   const reductionPasses = reduction.passes ?? {};
   const reductionPassOptions = reduction.passOptions ?? {};
   const hooks = cfg.hooks ?? {};
   const contextEngine = cfg.contextEngine ?? {};
   const proxyMode = cfg.proxyMode ?? {};
-  const envTaskStateEstimatorEnabled = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED", "ECOCLAW_TASK_STATE_ESTIMATOR_ENABLED").toLowerCase();
-  const envTaskStateEstimatorBaseUrl = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL", "ECOCLAW_TASK_STATE_ESTIMATOR_BASE_URL");
-  const envTaskStateEstimatorApiKey = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY", "ECOCLAW_TASK_STATE_ESTIMATOR_API_KEY");
-  const envTaskStateEstimatorModel = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_MODEL", "ECOCLAW_TASK_STATE_ESTIMATOR_MODEL");
-  const envTaskStateEstimatorTimeoutMs = Number.parseInt(envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_TIMEOUT_MS", "ECOCLAW_TASK_STATE_ESTIMATOR_TIMEOUT_MS"), 10);
-  const envTaskStateEstimatorBatchTurns = Number.parseInt(envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS", "ECOCLAW_TASK_STATE_ESTIMATOR_BATCH_TURNS"), 10);
-  const envTaskStateEstimatorEvictionLookaheadTurns = Number.parseInt(envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS", "ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS"), 10);
-  const envTaskStateEstimatorInputMode = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE", "ECOCLAW_TASK_STATE_ESTIMATOR_INPUT_MODE");
-  const envTaskStateEstimatorLifecycleMode = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE", "ECOCLAW_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE");
-  const envTaskStateEstimatorEvictionPromotionPolicy = envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY", "ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY");
-  const envTaskStateEstimatorEvictionPromotionHotTailSize = Number.parseInt(envWithAlias("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE", "ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE"), 10);
+  const envTaskStateEstimatorEnabled = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED").toLowerCase();
+  const envTaskStateEstimatorBaseUrl = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL");
+  const envTaskStateEstimatorApiKey = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY");
+  const envTaskStateEstimatorModel = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_MODEL");
+  const envTaskStateEstimatorTimeoutMs = Number.parseInt(envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_TIMEOUT_MS"), 10);
+  const envTaskStateEstimatorBatchTurns = Number.parseInt(envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS"), 10);
+  const envTaskStateEstimatorEvictionLookaheadTurns = Number.parseInt(envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS"), 10);
+  const envTaskStateEstimatorInputMode = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE");
+  const envTaskStateEstimatorLifecycleMode = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE");
+  const envTaskStateEstimatorEvictionPromotionPolicy = envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY");
+  const envTaskStateEstimatorEvictionPromotionHotTailSize = Number.parseInt(envValue("TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE"), 10);
   return {
     enabled: cfg.enabled ?? true,
     logLevel: cfg.logLevel ?? "info",

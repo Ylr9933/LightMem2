@@ -24,8 +24,8 @@ ce_import_runtime_envs() {
 
 ce_normalize_runtime_env() {
   normalize_openclaw_runtime_env
-  export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-${TOKENPILOT_OPENCLAW_HOME:-${ECOCLAW_OPENCLAW_HOME:-${HOME}}}/.openclaw/openclaw.json}"
-  export TOKENPILOT_OPENCLAW_HOME="${TOKENPILOT_OPENCLAW_HOME:-${ECOCLAW_OPENCLAW_HOME:-${HOME}}}"
+  export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-${TOKENPILOT_OPENCLAW_HOME:-${HOME}}/.openclaw/openclaw.json}"
+  export TOKENPILOT_OPENCLAW_HOME="${TOKENPILOT_OPENCLAW_HOME:-${HOME}}"
   export HOME="${HOME:-${TOKENPILOT_OPENCLAW_HOME}}"
   export CLAW_EVAL_SOURCE_ROOT="${CLAW_EVAL_SOURCE_ROOT:-${CLAW_EVAL_SOURCE_DIR}}"
   export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
@@ -83,7 +83,7 @@ ce_require_estimator_env_if_enabled() {
 
 ce_prepare_tmp_openclaw_home() {
   local label="${1:-run}"
-  local source_home="${SOURCE_OPENCLAW_HOME:-${TOKENPILOT_OPENCLAW_HOME:-${ECOCLAW_OPENCLAW_HOME:-${HOME}}}}"
+  local source_home="${SOURCE_OPENCLAW_HOME:-${TOKENPILOT_OPENCLAW_HOME:-${HOME}}}"
   local source_state_dir="${SOURCE_OPENCLAW_STATE_DIR:-${source_home}/.openclaw}"
   if [[ ! -d "${source_state_dir}" ]]; then
     echo "Missing source OpenClaw state dir: ${source_state_dir}" >&2

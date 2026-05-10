@@ -6,7 +6,7 @@ PINCHBENCH_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 normalize_openclaw_runtime_env() {
-  local openclaw_home="${TOKENPILOT_OPENCLAW_HOME:-${ECOCLAW_OPENCLAW_HOME:-${HOME}}}"
+  local openclaw_home="${TOKENPILOT_OPENCLAW_HOME:-${HOME}}"
   local runtime_local_bin="${openclaw_home}/.local/bin"
   export HOME="${openclaw_home}"
   export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-${HOME}/.openclaw}"
@@ -28,19 +28,6 @@ openclaw_cmd() {
   else
     openclaw "$@"
   fi
-}
-
-promote_tokenpilot_aliases() {
-  local key=""
-  local legacy_key=""
-  while IFS='=' read -r key _; do
-    [[ -z "${key}" ]] && continue
-    [[ "${key}" != TOKENPILOT_* ]] && continue
-    legacy_key="ECOCLAW_${key#TOKENPILOT_}"
-    if [[ -z "${!legacy_key+x}" || -z "${!legacy_key}" ]]; then
-      export "${legacy_key}=${!key}"
-    fi
-  done < <(env)
 }
 
 import_dotenv() {
@@ -70,7 +57,6 @@ import_dotenv() {
 import_runtime_envs() {
   import_dotenv "${PINCHBENCH_ROOT}/.env"
   import_dotenv "${REPO_ROOT}/.env"
-  promote_tokenpilot_aliases
 }
 
 normalize_model_name() {
@@ -101,10 +87,10 @@ apply_model_runtime_env() {
   local route_provider_var="PINCHBENCH_MODEL_${model_key}_PROVIDER_PREFIX"
 
   if [[ -n "${!route_base_var:-}" ]]; then
-    export ECOCLAW_BASE_URL="${!route_base_var}"
+    export TOKENPILOT_BASE_URL="${!route_base_var}"
   fi
   if [[ -n "${!route_key_var:-}" ]]; then
-    export ECOCLAW_API_KEY="${!route_key_var}"
+    export TOKENPILOT_API_KEY="${!route_key_var}"
   fi
   if [[ -n "${!route_provider_var:-}" ]]; then
     export PINCHBENCH_MODEL_PROVIDER_PREFIX="${!route_provider_var}"
@@ -113,7 +99,7 @@ apply_model_runtime_env() {
 
 resolve_model_alias() {
   local model_like="${1:?model alias is required}"
-  local provider_prefix="${PINCHBENCH_MODEL_PROVIDER_PREFIX:-${ECOCLAW_OPENAI_PROVIDER:-}}"
+  local provider_prefix="${PINCHBENCH_MODEL_PROVIDER_PREFIX:-}"
   if [[ "${model_like}" == *"gpt-5-4-mini"* ]]; then
     model_like="${model_like//gpt-5-4-mini/gpt-5.4-mini}"
   fi
@@ -122,7 +108,7 @@ resolve_model_alias() {
     return 0
   fi
   if [[ -z "${provider_prefix}" ]]; then
-    printf 'Model alias %s requires PINCHBENCH_MODEL_PROVIDER_PREFIX (or ECOCLAW_OPENAI_PROVIDER).\n' "${model_like}" >&2
+    printf 'Model alias %s requires PINCHBENCH_MODEL_PROVIDER_PREFIX.\n' "${model_like}" >&2
     return 1
   fi
 
@@ -163,13 +149,13 @@ resolve_model_alias() {
 }
 
 apply_runtime_env() {
-  if [[ -n "${ECOCLAW_API_KEY:-}" ]]; then
-    export OPENAI_API_KEY="${ECOCLAW_API_KEY}"
-    export OPENROUTER_API_KEY="${ECOCLAW_API_KEY}"
+  if [[ -n "${TOKENPILOT_API_KEY:-}" ]]; then
+    export OPENAI_API_KEY="${TOKENPILOT_API_KEY}"
+    export OPENROUTER_API_KEY="${TOKENPILOT_API_KEY}"
   fi
-  if [[ -n "${ECOCLAW_BASE_URL:-}" ]]; then
-    export OPENAI_BASE_URL="${ECOCLAW_BASE_URL}"
-    export OPENROUTER_BASE_URL="${ECOCLAW_BASE_URL}"
+  if [[ -n "${TOKENPILOT_BASE_URL:-}" ]]; then
+    export OPENAI_BASE_URL="${TOKENPILOT_BASE_URL}"
+    export OPENROUTER_BASE_URL="${TOKENPILOT_BASE_URL}"
   fi
   if [[ -n "${MINIMAX_API_KEY:-}" ]]; then
     export MINIMAX_API_KEY="${MINIMAX_API_KEY}"
@@ -177,78 +163,78 @@ apply_runtime_env() {
   if [[ -n "${GMN_API_KEY:-}" ]]; then
     export GMN_API_KEY="${GMN_API_KEY}"
   fi
-  if [[ -z "${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" && -z "${ECOCLAW_UPSTREAM_HTTPS_PROXY:-}" ]]; then
+  if [[ -z "${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" && -z "${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" ]]; then
     unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
-    unset ECOCLAW_UPSTREAM_NO_PROXY NO_PROXY no_proxy
+    unset TOKENPILOT_UPSTREAM_NO_PROXY NO_PROXY no_proxy
   fi
-  if [[ -n "${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" ]]; then
-    export ECOCLAW_UPSTREAM_HTTPS_PROXY="${ECOCLAW_UPSTREAM_HTTPS_PROXY:-${ECOCLAW_UPSTREAM_HTTP_PROXY}}"
+  if [[ -n "${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" ]]; then
+    export TOKENPILOT_UPSTREAM_HTTPS_PROXY="${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-${TOKENPILOT_UPSTREAM_HTTP_PROXY}}"
   fi
-  if [[ -n "${ECOCLAW_UPSTREAM_HTTPS_PROXY:-}" ]]; then
-    export ECOCLAW_UPSTREAM_HTTP_PROXY="${ECOCLAW_UPSTREAM_HTTP_PROXY:-${ECOCLAW_UPSTREAM_HTTPS_PROXY}}"
+  if [[ -n "${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" ]]; then
+    export TOKENPILOT_UPSTREAM_HTTP_PROXY="${TOKENPILOT_UPSTREAM_HTTP_PROXY:-${TOKENPILOT_UPSTREAM_HTTPS_PROXY}}"
   fi
-  if [[ -z "${ECOCLAW_UPSTREAM_NO_PROXY:-}" ]]; then
-    export ECOCLAW_UPSTREAM_NO_PROXY="127.0.0.1,localhost"
+  if [[ -z "${TOKENPILOT_UPSTREAM_NO_PROXY:-}" ]]; then
+    export TOKENPILOT_UPSTREAM_NO_PROXY="127.0.0.1,localhost"
   fi
-  if [[ -n "${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" ]]; then
-    export HTTP_PROXY="${HTTP_PROXY:-${ECOCLAW_UPSTREAM_HTTP_PROXY}}"
-    export http_proxy="${http_proxy:-${ECOCLAW_UPSTREAM_HTTP_PROXY}}"
+  if [[ -n "${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" ]]; then
+    export HTTP_PROXY="${HTTP_PROXY:-${TOKENPILOT_UPSTREAM_HTTP_PROXY}}"
+    export http_proxy="${http_proxy:-${TOKENPILOT_UPSTREAM_HTTP_PROXY}}"
   fi
-  if [[ -n "${ECOCLAW_UPSTREAM_HTTPS_PROXY:-}" ]]; then
-    export HTTPS_PROXY="${HTTPS_PROXY:-${ECOCLAW_UPSTREAM_HTTPS_PROXY}}"
-    export https_proxy="${https_proxy:-${ECOCLAW_UPSTREAM_HTTPS_PROXY}}"
+  if [[ -n "${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" ]]; then
+    export HTTPS_PROXY="${HTTPS_PROXY:-${TOKENPILOT_UPSTREAM_HTTPS_PROXY}}"
+    export https_proxy="${https_proxy:-${TOKENPILOT_UPSTREAM_HTTPS_PROXY}}"
   fi
-  export NO_PROXY="${NO_PROXY:-${ECOCLAW_UPSTREAM_NO_PROXY}}"
-  export no_proxy="${no_proxy:-${ECOCLAW_UPSTREAM_NO_PROXY}}"
+  export NO_PROXY="${NO_PROXY:-${TOKENPILOT_UPSTREAM_NO_PROXY}}"
+  export no_proxy="${no_proxy:-${TOKENPILOT_UPSTREAM_NO_PROXY}}"
 }
 
 require_method_runtime_env() {
-  if [[ -z "${ECOCLAW_BASE_URL:-}" ]]; then
-    printf 'Missing ECOCLAW_BASE_URL. Define it in experiments/pinchbench/.env or the shell environment.\n' >&2
+  if [[ -z "${TOKENPILOT_BASE_URL:-}" ]]; then
+    printf 'Missing TOKENPILOT_BASE_URL. Define it in experiments/pinchbench/.env or the shell environment.\n' >&2
     return 1
   fi
-  if [[ -z "${ECOCLAW_API_KEY:-}" ]]; then
-    printf 'Missing ECOCLAW_API_KEY. Define it in experiments/pinchbench/.env or the shell environment.\n' >&2
+  if [[ -z "${TOKENPILOT_API_KEY:-}" ]]; then
+    printf 'Missing TOKENPILOT_API_KEY. Define it in experiments/pinchbench/.env or the shell environment.\n' >&2
     return 1
   fi
 }
 
 ensure_plugin_runtime_config() {
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
-  local proxy_base_url="${TOKENPILOT_BASE_URL:-${ECOCLAW_BASE_URL:-}}"
-  local proxy_api_key="${TOKENPILOT_API_KEY:-${ECOCLAW_API_KEY:-}}"
-  local proxy_port="${TOKENPILOT_PROXY_PORT:-${ECOCLAW_PROXY_PORT:-17668}}"
-  local plugin_load_path="${TOKENPILOT_PLUGIN_LOAD_PATH:-${ECOCLAW_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/tokenpilot}}"
-  local proxy_pure_forward="${TOKENPILOT_PROXY_PURE_FORWARD:-${ECOCLAW_PROXY_PURE_FORWARD:-false}}"
-  local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-${ECOCLAW_ENABLE_REDUCTION:-true}}"
-  local reduction_trigger_min_chars="${TOKENPILOT_REDUCTION_TRIGGER_MIN_CHARS:-${ECOCLAW_REDUCTION_TRIGGER_MIN_CHARS:-2200}}"
-  local reduction_max_tool_chars="${TOKENPILOT_REDUCTION_MAX_TOOL_CHARS:-${ECOCLAW_REDUCTION_MAX_TOOL_CHARS:-1200}}"
-  local reduction_pass_repeated_read_dedup="${TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP:-${ECOCLAW_REDUCTION_PASS_REPEATED_READ_DEDUP:-true}}"
-  local reduction_pass_tool_payload_trim="${TOKENPILOT_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-${ECOCLAW_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-false}}"
-  local reduction_pass_html_slimming="${TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING:-${ECOCLAW_REDUCTION_PASS_HTML_SLIMMING:-true}}"
-  local reduction_pass_exec_output_truncation="${TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-${ECOCLAW_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-true}}"
-  local reduction_pass_agents_startup_optimization="${TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-${ECOCLAW_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-true}}"
-  local default_model="${TOKENPILOT_MODEL:-${ECOCLAW_MODEL:-}}"
-  local exec_host="${TOKENPILOT_EXEC_HOST:-${ECOCLAW_EXEC_HOST:-gateway}}"
-  local exec_security="${TOKENPILOT_EXEC_SECURITY:-${ECOCLAW_EXEC_SECURITY:-full}}"
-  local exec_ask="${TOKENPILOT_EXEC_ASK:-${ECOCLAW_EXEC_ASK:-off}}"
-  local elevated_enabled="${TOKENPILOT_ELEVATED_ENABLED:-${ECOCLAW_ELEVATED_ENABLED:-true}}"
-  local elevated_allow_from="${TOKENPILOT_ELEVATED_ALLOW_FROM:-${ECOCLAW_ELEVATED_ALLOW_FROM:-webchat}}"
-  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-${ECOCLAW_ENABLE_EVICTION:-false}}"
-  local eviction_policy="${TOKENPILOT_EVICTION_POLICY:-${ECOCLAW_EVICTION_POLICY:-lru}}"
-  local eviction_min_block_chars="${TOKENPILOT_EVICTION_MIN_BLOCK_CHARS:-${ECOCLAW_EVICTION_MIN_BLOCK_CHARS:-256}}"
-  local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-${ECOCLAW_EVICTION_REPLACEMENT_MODE:-drop}}"
-  local task_state_estimator_enabled="${TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED:-${ECOCLAW_TASK_STATE_ESTIMATOR_ENABLED:-__KEEP__}}"
-  local task_state_estimator_base_url="${TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL:-${ECOCLAW_TASK_STATE_ESTIMATOR_BASE_URL:-__KEEP__}}"
-  local task_state_estimator_api_key="${TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY:-${ECOCLAW_TASK_STATE_ESTIMATOR_API_KEY:-__KEEP__}}"
-  local task_state_estimator_model="${TOKENPILOT_TASK_STATE_ESTIMATOR_MODEL:-${ECOCLAW_TASK_STATE_ESTIMATOR_MODEL:-__KEEP__}}"
-  local task_state_estimator_request_timeout_ms="${TOKENPILOT_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-${ECOCLAW_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-__KEEP__}}"
-  local task_state_estimator_batch_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS:-${ECOCLAW_TASK_STATE_ESTIMATOR_BATCH_TURNS:-__KEEP__}}"
-  local task_state_estimator_eviction_lookahead_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-__KEEP__}}"
-  local task_state_estimator_input_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE:-${ECOCLAW_TASK_STATE_ESTIMATOR_INPUT_MODE:-__KEEP__}}"
-  local task_state_estimator_lifecycle_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE:-${ECOCLAW_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE:-__KEEP__}}"
-  local task_state_estimator_eviction_promotion_policy="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY:-__KEEP__}}"
-  local task_state_estimator_eviction_promotion_hot_tail_size="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE:-${ECOCLAW_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE:-__KEEP__}}"
+  local proxy_base_url="${TOKENPILOT_BASE_URL:-}"
+  local proxy_api_key="${TOKENPILOT_API_KEY:-}"
+  local proxy_port="${TOKENPILOT_PROXY_PORT:-17668}"
+  local plugin_load_path="${TOKENPILOT_PLUGIN_LOAD_PATH:-${HOME}/.openclaw/extensions/tokenpilot}"
+  local proxy_pure_forward="${TOKENPILOT_PROXY_PURE_FORWARD:-false}"
+  local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-true}"
+  local reduction_trigger_min_chars="${TOKENPILOT_REDUCTION_TRIGGER_MIN_CHARS:-2200}"
+  local reduction_max_tool_chars="${TOKENPILOT_REDUCTION_MAX_TOOL_CHARS:-1200}"
+  local reduction_pass_repeated_read_dedup="${TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP:-true}"
+  local reduction_pass_tool_payload_trim="${TOKENPILOT_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-false}"
+  local reduction_pass_html_slimming="${TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING:-true}"
+  local reduction_pass_exec_output_truncation="${TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-true}"
+  local reduction_pass_agents_startup_optimization="${TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-true}"
+  local default_model="${TOKENPILOT_MODEL:-}"
+  local exec_host="${TOKENPILOT_EXEC_HOST:-gateway}"
+  local exec_security="${TOKENPILOT_EXEC_SECURITY:-full}"
+  local exec_ask="${TOKENPILOT_EXEC_ASK:-off}"
+  local elevated_enabled="${TOKENPILOT_ELEVATED_ENABLED:-true}"
+  local elevated_allow_from="${TOKENPILOT_ELEVATED_ALLOW_FROM:-webchat}"
+  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-false}"
+  local eviction_policy="${TOKENPILOT_EVICTION_POLICY:-lru}"
+  local eviction_min_block_chars="${TOKENPILOT_EVICTION_MIN_BLOCK_CHARS:-256}"
+  local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-drop}"
+  local task_state_estimator_enabled="${TOKENPILOT_TASK_STATE_ESTIMATOR_ENABLED:-__KEEP__}"
+  local task_state_estimator_base_url="${TOKENPILOT_TASK_STATE_ESTIMATOR_BASE_URL:-__KEEP__}"
+  local task_state_estimator_api_key="${TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY:-__KEEP__}"
+  local task_state_estimator_model="${TOKENPILOT_TASK_STATE_ESTIMATOR_MODEL:-__KEEP__}"
+  local task_state_estimator_request_timeout_ms="${TOKENPILOT_TASK_STATE_ESTIMATOR_REQUEST_TIMEOUT_MS:-__KEEP__}"
+  local task_state_estimator_batch_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS:-__KEEP__}"
+  local task_state_estimator_eviction_lookahead_turns="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_LOOKAHEAD_TURNS:-__KEEP__}"
+  local task_state_estimator_input_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_INPUT_MODE:-__KEEP__}"
+  local task_state_estimator_lifecycle_mode="${TOKENPILOT_TASK_STATE_ESTIMATOR_LIFECYCLE_MODE:-__KEEP__}"
+  local task_state_estimator_eviction_promotion_policy="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_POLICY:-__KEEP__}"
+  local task_state_estimator_eviction_promotion_hot_tail_size="${TOKENPILOT_TASK_STATE_ESTIMATOR_EVICTION_PROMOTION_HOT_TAIL_SIZE:-__KEEP__}"
   if [[ ! -f "${config_path}" ]]; then
     echo "WARN: openclaw config not found, skip plugin runtime config patch: ${config_path}" >&2
     return 0
@@ -508,7 +494,7 @@ PATCH_PY
 
 sanitize_plugin_runtime_config() {
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
-  local enable_eviction="${ECOCLAW_ENABLE_EVICTION:-false}"
+  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-false}"
   local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-true}"
   if [[ ! -f "${config_path}" ]]; then
     echo "WARN: openclaw config not found, skip plugin runtime config sanitize: ${config_path}" >&2
@@ -580,7 +566,7 @@ SANITIZE_PY
 }
 
 ensure_pinchbench_exec_approvals() {
-  local approvals_path="${TOKENPILOT_EXEC_APPROVALS_PATH:-${ECOCLAW_EXEC_APPROVALS_PATH:-${HOME}/.openclaw/exec-approvals.json}}"
+  local approvals_path="${TOKENPILOT_EXEC_APPROVALS_PATH:-${HOME}/.openclaw/exec-approvals.json}"
   mkdir -p "$(dirname "${approvals_path}")"
 
   python3 - "${approvals_path}" <<'PINCHBENCH_APPROVALS_PY'
@@ -669,10 +655,6 @@ resolve_dataset_dir() {
     printf '%s\n' "${PINCHBENCH_ROOT}/dataset"
     return 0
   fi
-  if [[ -n "${ECOCLAW_SKILL_DIR:-}" && -d "${ECOCLAW_SKILL_DIR}" ]]; then
-    printf '%s\n' "${ECOCLAW_SKILL_DIR}"
-    return 0
-  fi
   printf 'PinchBench dataset directory not found. Set PINCHBENCH_DATASET_DIR or update the local layout.\n' >&2
   return 1
 }
@@ -686,17 +668,12 @@ resolve_plugin_state_dir() {
     printf '%s\n' "${TOKENPILOT_STATE_DIR}"
     return 0
   fi
-  if [[ -n "${ECOCLAW_STATE_DIR:-}" && -d "${ECOCLAW_STATE_DIR}" ]]; then
-    printf '%s\n' "${ECOCLAW_STATE_DIR}"
-    return 0
-  fi
   local tokenpilot_state_dir="${HOME}/.openclaw/tokenpilot-plugin-state"
-  local fallback_state_dir="${HOME}/.openclaw/ecoclaw-plugin-state"
   if [[ -d "${tokenpilot_state_dir}" ]]; then
     printf '%s\n' "${tokenpilot_state_dir}"
     return 0
   fi
-  printf '%s\n' "${fallback_state_dir}"
+  printf '%s\n' "${tokenpilot_state_dir}"
 }
 
 latest_json_in_dir() {
@@ -715,7 +692,7 @@ latest_json_in_dir() {
 generate_cost_report_and_print_summary() {
   local result_json="${1:?result json is required}"
   local report_json="${2:?report json is required}"
-  local cache_write_ttl="${ECOCLAW_CACHE_WRITE_TTL:-5m}"
+  local cache_write_ttl="${TOKENPILOT_CACHE_WRITE_TTL:-5m}"
 
   if [[ ! -f "${result_json}" ]]; then
     echo "Cost report skipped: result file not found: ${result_json}" >&2
@@ -914,8 +891,8 @@ ensure_openclaw_gateway_running() {
     validate_openclaw_runtime_config
   fi
   local config_path="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
-  local force_restart="${TOKENPILOT_FORCE_GATEWAY_RESTART:-${ECOCLAW_FORCE_GATEWAY_RESTART:-false}}"
-  local gateway_port="${ECOCLAW_GATEWAY_PORT:-}"
+  local force_restart="${TOKENPILOT_FORCE_GATEWAY_RESTART:-false}"
+  local gateway_port="${TOKENPILOT_GATEWAY_PORT:-}"
   if [[ -z "${gateway_port}" ]]; then
     gateway_port="$(python3 - "${config_path}" <<'PY'
 import json
@@ -939,9 +916,9 @@ PY
       OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-      ECOCLAW_UPSTREAM_HTTP_PROXY="${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" \
-      ECOCLAW_UPSTREAM_HTTPS_PROXY="${ECOCLAW_UPSTREAM_HTTPS_PROXY:-}" \
-      ECOCLAW_UPSTREAM_NO_PROXY="${ECOCLAW_UPSTREAM_NO_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_HTTP_PROXY="${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_HTTPS_PROXY="${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_NO_PROXY="${TOKENPILOT_UPSTREAM_NO_PROXY:-}" \
       openclaw_cmd gateway run --force --port "${gateway_port}" >/tmp/openclaw_gateway.log 2>&1 &
     local gateway_pid=$!
     local attempts=0
@@ -968,9 +945,9 @@ PY
       OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-      ECOCLAW_UPSTREAM_HTTP_PROXY="${ECOCLAW_UPSTREAM_HTTP_PROXY:-}" \
-      ECOCLAW_UPSTREAM_HTTPS_PROXY="${ECOCLAW_UPSTREAM_HTTPS_PROXY:-}" \
-      ECOCLAW_UPSTREAM_NO_PROXY="${ECOCLAW_UPSTREAM_NO_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_HTTP_PROXY="${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_HTTPS_PROXY="${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" \
+      TOKENPILOT_UPSTREAM_NO_PROXY="${TOKENPILOT_UPSTREAM_NO_PROXY:-}" \
       openclaw_cmd gateway run --force --port "${gateway_port}" >/tmp/openclaw_gateway.log 2>&1 &
     local gateway_pid=$!
     local attempts=0

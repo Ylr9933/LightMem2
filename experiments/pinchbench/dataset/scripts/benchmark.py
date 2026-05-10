@@ -416,9 +416,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--suite",
-        default=os.environ.get("TOKENPILOT_SUITE")
-        or os.environ.get("ECOCLAW_SUITE")
-        or "all",
+        default=os.environ.get("TOKENPILOT_SUITE") or "all",
         help='Tasks to run: "all" (local supported set), "all-upstream", "automated-only", or comma-separated IDs',
     )
     parser.add_argument(
@@ -430,16 +428,14 @@ def _parse_args() -> argparse.Namespace:
         "--timeout-multiplier",
         type=float,
         default=float(
-            os.environ.get("TOKENPILOT_TIMEOUT_MULTIPLIER")
-            or os.environ.get("ECOCLAW_TIMEOUT_MULTIPLIER")
-            or "1.0"
+            os.environ.get("TOKENPILOT_TIMEOUT_MULTIPLIER") or "1.0"
         ),
         help="Scale all task timeouts",
     )
     parser.add_argument(
         "--runs",
         type=int,
-        default=int(os.environ.get("TOKENPILOT_RUNS") or os.environ.get("ECOCLAW_RUNS") or "1"),
+        default=int(os.environ.get("TOKENPILOT_RUNS") or "1"),
         help="Number of runs per task for averaging",
     )
     parser.add_argument(
@@ -452,9 +448,7 @@ def _parse_args() -> argparse.Namespace:
         "--session-mode",
         type=str,
         choices=["isolated", "continuous"],
-        default=os.environ.get("TOKENPILOT_SESSION_MODE")
-        or os.environ.get("ECOCLAW_SESSION_MODE")
-        or "isolated",
+        default=os.environ.get("TOKENPILOT_SESSION_MODE") or "isolated",
         help="Transcript/session isolation mode: isolated (default) or continuous (sequential accumulated transcript with per-task slicing)",
     )
     parser.add_argument(
@@ -1558,11 +1552,11 @@ def main():
         logger.error("Missing required argument: --model")
         sys.exit(2)
 
-    # Determine judge model: --judge arg > TOKENPILOT_JUDGE/ECOCLAW_JUDGE env > default
+    # Determine judge model: --judge arg > TOKENPILOT_JUDGE env > default
     args.model = normalize_benchmark_model_id(args.model)
     judge_model = args.judge
     if not judge_model:
-        judge_model = os.environ.get("TOKENPILOT_JUDGE") or os.environ.get("ECOCLAW_JUDGE")
+        judge_model = os.environ.get("TOKENPILOT_JUDGE")
     if not judge_model:
         judge_model = "openrouter/anthropic/claude-opus-4.5"
     judge_model = normalize_benchmark_model_id(judge_model)
@@ -1579,10 +1573,10 @@ def main():
     run_id = _next_run_id(run_root)
     skill_dir = skill_root
 
-    # Determine parallel jobs: --parallel arg > TOKENPILOT_PARALLEL/ECOCLAW_PARALLEL env > default 1
+    # Determine parallel jobs: --parallel arg > TOKENPILOT_PARALLEL env > default 1
     parallel_jobs = args.parallel
     if parallel_jobs is None:
-        parallel_jobs = int(os.environ.get("TOKENPILOT_PARALLEL") or os.environ.get("ECOCLAW_PARALLEL", "1"))
+        parallel_jobs = int(os.environ.get("TOKENPILOT_PARALLEL") or "1")
     parallel_jobs = max(1, int(parallel_jobs))
     logger.info("Parallel isolated jobs: %s", parallel_jobs)
     session_mode = args.session_mode
