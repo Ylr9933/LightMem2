@@ -23,6 +23,11 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "dependencies": {
+    "@tokenpilot/history": "workspace:*",
+    "@tokenpilot/memory": "workspace:*",
+    "@tokenpilot/runtime-core": "workspace:*"
+  },
   "scripts": {
     "build": "tsx build.ts",
     "test": "node --import tsx --test src/**/*.test.ts",

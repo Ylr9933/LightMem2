@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { mkdir, appendFile } from "node:fs/promises";
 import { pluginStateSubdir } from "@tokenpilot/runtime-core";
 import type { UpstreamConfig, UpstreamHttpResponse } from "./upstream.js";
+import { injectProceduralMemoryHints } from "./procedural-memory.js";
 
 function extractItemText(item: any, extractInputText: (input: any) => string): string {
   if (!item || typeof item !== "object") return "";
@@ -118,6 +119,14 @@ export async function startEmbeddedResponsesProxy(
           senderMetadataBlocksBefore: 0,
           senderMetadataBlocksAfter: 0,
         };
+      const memoryInjection = !proxyPureForward
+        ? await injectProceduralMemoryHints({
+          cfg,
+          sessionId: resolvedSessionId,
+          payload,
+          helpers,
+        })
+        : { injected: false, hitCount: 0 };
       if (!proxyPureForward && cfg.stateDir) {
         await helpers.appendTaskStateTrace(cfg.stateDir, {
           stage: "stable_prefix_rewrite",
@@ -129,6 +138,8 @@ export async function startEmbeddedResponsesProxy(
           userContentRewrites: stableRewrite.userContentRewrites,
           senderMetadataBlocksBefore: stableRewrite.senderMetadataBlocksBefore,
           senderMetadataBlocksAfter: stableRewrite.senderMetadataBlocksAfter,
+          proceduralMemoryInjected: memoryInjection.injected,
+          proceduralMemoryHitCount: memoryInjection.hitCount,
         });
       }
       const beforeReductionInputCount = Array.isArray(payload?.input) ? payload.input.length : 0;

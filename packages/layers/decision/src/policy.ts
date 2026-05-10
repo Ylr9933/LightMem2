@@ -1503,7 +1503,33 @@ async function maybeRunTaskStateEstimator(
   config: NormalizedPolicyConfig,
   estimator: TaskStateEstimator | null,
 ): Promise<TaskStateRunResult | null> {
-  if (!config.taskStateEstimator.enabled || !config.stateDir || !estimator) return null;
+  if (!config.stateDir) return null;
+  await appendTaskStateTrace(config.stateDir, {
+    stage: "estimator_gate_check",
+    sessionId: ctx.sessionId,
+    estimatorEnabled: config.taskStateEstimator.enabled,
+    hasStateDir: Boolean(config.stateDir),
+    hasEstimatorInstance: Boolean(estimator),
+    estimatorBaseUrlPresent: Boolean(config.taskStateEstimator.baseUrl),
+    estimatorApiKeyPresent: Boolean(config.taskStateEstimator.apiKey),
+    estimatorModel: config.taskStateEstimator.model ?? null,
+    batchTurns: config.taskStateEstimator.batchTurns,
+    lifecycleMode: config.taskStateEstimator.lifecycleMode,
+    inputMode: config.taskStateEstimator.inputMode,
+  });
+  if (!config.taskStateEstimator.enabled || !estimator) {
+    await appendTaskStateTrace(config.stateDir, {
+      stage: "estimator_gate_blocked",
+      sessionId: ctx.sessionId,
+      reason: !config.taskStateEstimator.enabled ? "disabled" : "missing_estimator_instance",
+      estimatorEnabled: config.taskStateEstimator.enabled,
+      hasEstimatorInstance: Boolean(estimator),
+      estimatorBaseUrlPresent: Boolean(config.taskStateEstimator.baseUrl),
+      estimatorApiKeyPresent: Boolean(config.taskStateEstimator.apiKey),
+      estimatorModel: config.taskStateEstimator.model ?? null,
+    });
+    return null;
+  }
 
   const registry = await loadSessionTaskRegistry(config.stateDir, ctx.sessionId);
   const turnSeqs = await listRawSemanticTurnSeqs(config.stateDir, ctx.sessionId);
@@ -1739,9 +1765,15 @@ async function maybeRunTaskStateEstimator(
 export function createPolicyModule(cfg: PolicyModuleConfig = {}): RuntimeModule {
   const config = normalizeConfig(cfg);
   const stateBySession = new Map<string, PolicySessionState>();
-  const taskStateEstimator = config.taskStateEstimator.enabled
-    ? createApiTaskStateEstimator(config.taskStateEstimator)
-    : null;
+  let taskStateEstimator: TaskStateEstimator | null = null;
+  let estimatorCreationError: string | null = null;
+  if (config.taskStateEstimator.enabled) {
+    try {
+      taskStateEstimator = createApiTaskStateEstimator(config.taskStateEstimator);
+    } catch (error) {
+      estimatorCreationError = error instanceof Error ? error.message : String(error);
+    }
+  }
 
   return {
     name: "module-policy",
@@ -1757,6 +1789,22 @@ export function createPolicyModule(cfg: PolicyModuleConfig = {}): RuntimeModule 
       const state = stateBySession.get(ctx.sessionId) ?? createInitialPolicySessionState();
       const stabilizerEligible = readStabilizerEligible(ctx);
       const analysis = analyzePolicyBeforeBuild(ctx, state, apiFamily, config);
+      if (config.stateDir) {
+        await appendTaskStateTrace(config.stateDir, {
+          stage: "policy_before_build",
+          sessionId: ctx.sessionId,
+          estimatorEnabled: config.taskStateEstimator.enabled,
+          hasEstimatorInstance: Boolean(taskStateEstimator),
+          estimatorCreationError,
+          estimatorBaseUrlPresent: Boolean(config.taskStateEstimator.baseUrl),
+          estimatorApiKeyPresent: Boolean(config.taskStateEstimator.apiKey),
+          estimatorModel: config.taskStateEstimator.model ?? null,
+          batchTurns: config.taskStateEstimator.batchTurns,
+          lifecycleMode: config.taskStateEstimator.lifecycleMode,
+          inputMode: config.taskStateEstimator.inputMode,
+          evictionEnabled: config.evictionEnabled,
+        });
+      }
       const taskStateRun = await maybeRunTaskStateEstimator(ctx, config, taskStateEstimator);
       const policy = buildPolicyMetadata(apiFamily, state, analysis, config, stabilizerEligible);
       if (taskStateRun) {

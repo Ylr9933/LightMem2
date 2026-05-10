@@ -48,7 +48,7 @@
       },
       "proxyAutostart": {
         "type": "boolean",
-        "default": true,
+        "default": false,
         "description": "Autostart embedded responses proxy when plugin starts."
       },
       "proxyPort": {
@@ -75,12 +75,12 @@
         "properties": {
           "beforeToolCall": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable before_tool_call default safety parameter injection."
           },
           "toolResultPersist": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable tool_result_persist artifact externalization for oversized tool results."
           }
         }
@@ -92,7 +92,7 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "default": true
+            "default": false
           },
           "pruneThresholdChars": {
             "type": "number",
@@ -118,17 +118,17 @@
         "properties": {
           "stabilizer": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable stabilizer telemetry module."
           },
           "policy": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable decision/policy module."
           },
           "reduction": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable reduction execution module."
           },
           "eviction": {
@@ -242,8 +242,102 @@
               "sliding_window",
               "completed_summary_plus_active_turns"
             ],
-            "default": "sliding_window",
+            "default": "completed_summary_plus_active_turns",
             "description": "Estimator input construction mode. sliding_window feeds only the pending turn window; completed_summary_plus_active_turns feeds summaries of completed tasks plus all turns for unresolved tasks."
+          }
+        }
+      },
+      "memory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Asynchronous procedural memory distillation and best-effort skill injection.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "autoDistill": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically enqueue evicted tasks for background procedural skill distillation."
+          },
+          "distillerType": {
+            "type": "string",
+            "enum": [
+              "prompting",
+              "autoskill",
+              "ctx2skill"
+            ],
+            "default": "prompting",
+            "description": "Skill distillation backend to use when memory distillation is enabled."
+          },
+          "batchSize": {
+            "type": "number",
+            "default": 2,
+            "description": "Maximum number of queued evicted tasks distilled in one background batch."
+          },
+          "topK": {
+            "type": "number",
+            "default": 0,
+            "description": "Maximum number of retrieved procedural skills injected per request."
+          },
+          "injectAsSystemHint": {
+            "type": "boolean",
+            "default": false,
+            "description": "Inject retrieved skills as a system message instead of prepending to the active user message."
+          },
+          "distillProvider": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "LLM provider used for procedural skill distillation. Defaults to taskStateEstimator provider when omitted.",
+            "properties": {
+              "baseUrl": {
+                "type": "string",
+                "description": "OpenAI-compatible base URL for skill distillation."
+              },
+              "apiKey": {
+                "type": "string",
+                "sensitive": true,
+                "description": "API key used for skill distillation."
+              },
+              "model": {
+                "type": "string",
+                "description": "Model name used for skill distillation."
+              },
+              "requestTimeoutMs": {
+                "type": "number",
+                "default": 60000,
+                "description": "HTTP timeout for skill distillation requests."
+              }
+            }
+          },
+          "embedding": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Optional embedding provider used to improve procedural skill retrieval.",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": false
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "OpenAI-compatible embeddings base URL."
+              },
+              "apiKey": {
+                "type": "string",
+                "sensitive": true,
+                "description": "API key used for procedural memory embeddings."
+              },
+              "model": {
+                "type": "string",
+                "description": "Embedding model name."
+              },
+              "queryInstruction": {
+                "type": "string",
+                "description": "Instruction prefix used for embedding retrieval queries."
+              }
+            }
           }
         }
       },
@@ -275,27 +369,27 @@
             "properties": {
               "repeatedReadDedup": {
                 "type": "boolean",
-                "default": true
+                "default": false
               },
               "toolPayloadTrim": {
                 "type": "boolean",
-                "default": true
+                "default": false
               },
               "htmlSlimming": {
                 "type": "boolean",
-                "default": true
+                "default": false
               },
               "execOutputTruncation": {
                 "type": "boolean",
-                "default": true
+                "default": false
               },
               "agentsStartupOptimization": {
                 "type": "boolean",
-                "default": true
+                "default": false
               },
               "memoryFaultRecovery": {
                 "type": "boolean",
-                "default": true
+                "default": false
               }
             }
           },

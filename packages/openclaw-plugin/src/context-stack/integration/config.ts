@@ -55,6 +55,27 @@ export type PluginRuntimeConfig = {
     evictionPromotionPolicy?: "fifo";
     evictionPromotionHotTailSize?: number;
   };
+  memory?: {
+    enabled?: boolean;
+    autoDistill?: boolean;
+    distillerType?: "prompting" | "autoskill" | "ctx2skill";
+    batchSize?: number;
+    topK?: number;
+    injectAsSystemHint?: boolean;
+    distillProvider?: {
+      baseUrl?: string;
+      apiKey?: string;
+      model?: string;
+      requestTimeoutMs?: number;
+    };
+    embedding?: {
+      enabled?: boolean;
+      baseUrl?: string;
+      apiKey?: string;
+      model?: string;
+      queryInstruction?: string;
+    };
+  };
   reduction?: {
     engine?: "layered";
     triggerMinChars?: number;
@@ -113,6 +134,14 @@ export function normalizeConfig(
   const eviction = cfg.eviction ?? {};
   const taskStateEstimator = cfg.taskStateEstimator ?? {};
   const reduction = cfg.reduction ?? {};
+  const memory = cfg.memory ?? {};
+  const memoryDistillProvider = memory.distillProvider ?? {};
+  const memoryEmbedding = memory.embedding ?? {};
+  const envMemoryEmbeddingEnabled = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_ENABLED", "ECOCLAW_MEMORY_EMBEDDING_ENABLED").toLowerCase();
+  const envMemoryEmbeddingBaseUrl = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_BASE_URL", "ECOCLAW_MEMORY_EMBEDDING_BASE_URL");
+  const envMemoryEmbeddingApiKey = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_API_KEY", "ECOCLAW_MEMORY_EMBEDDING_API_KEY");
+  const envMemoryEmbeddingModel = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_MODEL", "ECOCLAW_MEMORY_EMBEDDING_MODEL");
+  const envMemoryEmbeddingInstruction = envWithAlias("TOKENPILOT_MEMORY_EMBEDDING_QUERY_INSTRUCTION", "ECOCLAW_MEMORY_EMBEDDING_QUERY_INSTRUCTION");
   const reductionPasses = reduction.passes ?? {};
   const reductionPassOptions = reduction.passOptions ?? {};
   const hooks = cfg.hooks ?? {};
@@ -137,20 +166,20 @@ export function normalizeConfig(
     stateDir,
     debugTapProviderTraffic: cfg.debugTapProviderTraffic ?? false,
     debugTapPath: cfg.debugTapPath ?? pluginStateSubdir(stateDir, "provider-traffic.jsonl"),
-    proxyAutostart: cfg.proxyAutostart ?? true,
+    proxyAutostart: cfg.proxyAutostart ?? false,
     proxyPort: Math.max(1025, Math.min(65535, cfg.proxyPort ?? 17667)),
     proxyMode: { pureForward: proxyMode.pureForward ?? false },
-    hooks: { beforeToolCall: hooks.beforeToolCall ?? true, toolResultPersist: hooks.toolResultPersist ?? true },
+    hooks: { beforeToolCall: hooks.beforeToolCall ?? false, toolResultPersist: hooks.toolResultPersist ?? false },
     contextEngine: {
-      enabled: contextEngine.enabled ?? true,
+      enabled: contextEngine.enabled ?? false,
       pruneThresholdChars: Math.max(10_000, contextEngine.pruneThresholdChars ?? 100_000),
       keepRecentToolResults: Math.max(0, contextEngine.keepRecentToolResults ?? 5),
       placeholder: typeof contextEngine.placeholder === "string" && contextEngine.placeholder.trim().length > 0 ? contextEngine.placeholder : "[pruned]",
     },
     modules: {
-      stabilizer: modules.stabilizer ?? true,
-      policy: modules.policy ?? true,
-      reduction: modules.reduction ?? true,
+      stabilizer: modules.stabilizer ?? false,
+      policy: modules.policy ?? false,
+      reduction: modules.reduction ?? false,
       eviction: modules.eviction ?? false,
     },
     summary: {
@@ -172,21 +201,90 @@ export function normalizeConfig(
       requestTimeoutMs: Math.max(1000, taskStateEstimator.requestTimeoutMs ?? (Number.isFinite(envTaskStateEstimatorTimeoutMs) ? envTaskStateEstimatorTimeoutMs : 60_000)),
       batchTurns: Math.max(1, taskStateEstimator.batchTurns ?? (Number.isFinite(envTaskStateEstimatorBatchTurns) ? envTaskStateEstimatorBatchTurns : 5)),
       evictionLookaheadTurns: Math.max(1, taskStateEstimator.evictionLookaheadTurns ?? (Number.isFinite(envTaskStateEstimatorEvictionLookaheadTurns) ? envTaskStateEstimatorEvictionLookaheadTurns : 3)),
-      inputMode: taskStateEstimator.inputMode === "completed_summary_plus_active_turns" ? "completed_summary_plus_active_turns" : envTaskStateEstimatorInputMode === "completed_summary_plus_active_turns" ? "completed_summary_plus_active_turns" : "sliding_window",
+      inputMode: taskStateEstimator.inputMode === "sliding_window"
+        ? "sliding_window"
+        : envTaskStateEstimatorInputMode === "sliding_window"
+          ? "sliding_window"
+          : "completed_summary_plus_active_turns",
       lifecycleMode: taskStateEstimator.lifecycleMode === "decoupled" ? "decoupled" : envTaskStateEstimatorLifecycleMode === "decoupled" ? "decoupled" : "coupled",
       evictionPromotionPolicy: taskStateEstimator.evictionPromotionPolicy === "fifo" ? "fifo" : envTaskStateEstimatorEvictionPromotionPolicy === "fifo" ? "fifo" : "fifo",
       evictionPromotionHotTailSize: Math.max(0, taskStateEstimator.evictionPromotionHotTailSize ?? (Number.isFinite(envTaskStateEstimatorEvictionPromotionHotTailSize) ? envTaskStateEstimatorEvictionPromotionHotTailSize : 1)),
+    },
+    memory: {
+      enabled: memory.enabled ?? false,
+      autoDistill: memory.autoDistill ?? false,
+      distillerType:
+        memory.distillerType === "autoskill" || memory.distillerType === "ctx2skill"
+          ? memory.distillerType
+          : "prompting",
+      batchSize: Math.max(1, memory.batchSize ?? 2),
+      topK: Math.max(0, memory.topK ?? 0),
+      injectAsSystemHint: memory.injectAsSystemHint ?? false,
+      distillProvider: {
+        baseUrl:
+          typeof memoryDistillProvider.baseUrl === "string" && memoryDistillProvider.baseUrl.trim().length > 0
+            ? memoryDistillProvider.baseUrl.replace(/\/+$/, "")
+            : typeof taskStateEstimator.baseUrl === "string" && taskStateEstimator.baseUrl.trim().length > 0
+              ? taskStateEstimator.baseUrl.replace(/\/+$/, "")
+              : envTaskStateEstimatorBaseUrl
+                ? envTaskStateEstimatorBaseUrl.replace(/\/+$/, "")
+                : undefined,
+        apiKey:
+          typeof memoryDistillProvider.apiKey === "string" && memoryDistillProvider.apiKey.trim().length > 0
+            ? memoryDistillProvider.apiKey.trim()
+            : typeof taskStateEstimator.apiKey === "string" && taskStateEstimator.apiKey.trim().length > 0
+              ? taskStateEstimator.apiKey.trim()
+              : envTaskStateEstimatorApiKey || undefined,
+        model:
+          typeof memoryDistillProvider.model === "string" && memoryDistillProvider.model.trim().length > 0
+            ? memoryDistillProvider.model.trim()
+            : typeof taskStateEstimator.model === "string" && taskStateEstimator.model.trim().length > 0
+              ? taskStateEstimator.model.trim()
+              : envTaskStateEstimatorModel || undefined,
+        requestTimeoutMs: Math.max(
+          1000,
+          memoryDistillProvider.requestTimeoutMs
+            ?? taskStateEstimator.requestTimeoutMs
+            ?? (Number.isFinite(envTaskStateEstimatorTimeoutMs) ? envTaskStateEstimatorTimeoutMs : 60_000),
+        ),
+      },
+      embedding: {
+        enabled:
+          memoryEmbedding.enabled ??
+          (envMemoryEmbeddingEnabled === "1" ||
+            envMemoryEmbeddingEnabled === "true" ||
+            envMemoryEmbeddingEnabled === "yes" ||
+            envMemoryEmbeddingEnabled === "on"),
+        baseUrl:
+          typeof memoryEmbedding.baseUrl === "string" && memoryEmbedding.baseUrl.trim().length > 0
+            ? memoryEmbedding.baseUrl.replace(/\/+$/, "")
+            : envMemoryEmbeddingBaseUrl
+              ? envMemoryEmbeddingBaseUrl.replace(/\/+$/, "")
+              : undefined,
+        apiKey:
+          typeof memoryEmbedding.apiKey === "string" && memoryEmbedding.apiKey.trim().length > 0
+            ? memoryEmbedding.apiKey.trim()
+            : envMemoryEmbeddingApiKey || undefined,
+        model:
+          typeof memoryEmbedding.model === "string" && memoryEmbedding.model.trim().length > 0
+            ? memoryEmbedding.model.trim()
+            : envMemoryEmbeddingModel || undefined,
+        queryInstruction:
+          typeof memoryEmbedding.queryInstruction === "string" && memoryEmbedding.queryInstruction.trim().length > 0
+            ? memoryEmbedding.queryInstruction.trim()
+            : envMemoryEmbeddingInstruction || "Retrieve procedural skills relevant to the current coding task",
+      },
     },
     reduction: {
       engine: "layered" as const,
       triggerMinChars: Math.max(256, reduction.triggerMinChars ?? 2200),
       maxToolChars: Math.max(256, reduction.maxToolChars ?? 1200),
       passes: {
-        repeatedReadDedup: reductionPasses.repeatedReadDedup ?? true,
-        toolPayloadTrim: reductionPasses.toolPayloadTrim ?? true,
-        htmlSlimming: reductionPasses.htmlSlimming ?? true,
-        execOutputTruncation: reductionPasses.execOutputTruncation ?? true,
-        agentsStartupOptimization: reductionPasses.agentsStartupOptimization ?? true,
+        repeatedReadDedup: reductionPasses.repeatedReadDedup ?? false,
+        toolPayloadTrim: reductionPasses.toolPayloadTrim ?? false,
+        htmlSlimming: reductionPasses.htmlSlimming ?? false,
+        execOutputTruncation: reductionPasses.execOutputTruncation ?? false,
+        agentsStartupOptimization: reductionPasses.agentsStartupOptimization ?? false,
       },
       passOptions: {
         repeatedReadDedup: reductionPassOptions.repeatedReadDedup && typeof reductionPassOptions.repeatedReadDedup === "object" ? { ...reductionPassOptions.repeatedReadDedup } : {},

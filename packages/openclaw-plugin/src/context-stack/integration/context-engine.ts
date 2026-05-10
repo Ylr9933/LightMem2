@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { rewriteCanonicalState, syncCanonicalStateFromTranscript } from "../page-out/canonical-rewrite.js";
 import { estimateMessagesChars, saveCanonicalState } from "@tokenpilot/history";
+import { enqueueEvictedTasksForProceduralMemory } from "./procedural-memory.js";
 
 export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
   const canonicalMessageTaskIdsBound = (message: Record<string, unknown>): string[] => deps.canonicalMessageTaskIds(message, deps.asRecord);
@@ -46,6 +47,14 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
           safeId: deps.safeId,
         },
       });
+      await enqueueEvictedTasksForProceduralMemory({
+        cfg,
+        sessionId: params.sessionId,
+        state: rewritten.state,
+        appliedTaskIds: rewritten.appliedEvictionTaskIds,
+        helpers: deps,
+        logger,
+      });
       if (synced.changed || rewritten.changed) await saveCanonicalState(cfg.stateDir, rewritten.state);
     },
     async assemble(params: { sessionId: string; messages: any[]; tokenBudget?: number }) {
@@ -81,6 +90,14 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
           messageToolCallId: deps.messageToolCallId,
           safeId: deps.safeId,
         },
+      });
+      await enqueueEvictedTasksForProceduralMemory({
+        cfg,
+        sessionId: params.sessionId,
+        state: rewritten.state,
+        appliedTaskIds: rewritten.appliedEvictionTaskIds,
+        helpers: deps,
+        logger,
       });
       if (synced.changed || rewritten.changed) await saveCanonicalState(cfg.stateDir, rewritten.state);
       const estimatedChars = estimateMessagesChars(rewritten.state.messages, deps.contentToText);
@@ -119,6 +136,14 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
           messageToolCallId: deps.messageToolCallId,
           safeId: deps.safeId,
         },
+      });
+      await enqueueEvictedTasksForProceduralMemory({
+        cfg,
+        sessionId: params.sessionId,
+        state: rewritten.state,
+        appliedTaskIds: rewritten.appliedEvictionTaskIds,
+        helpers: deps,
+        logger,
       });
       if (synced.changed || rewritten.changed) await saveCanonicalState(cfg.stateDir, rewritten.state);
       return {

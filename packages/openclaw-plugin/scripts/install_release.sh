@@ -114,20 +114,65 @@ with open(config_path, "w", encoding="utf-8") as f:
 PY
 }
 
+prepare_config_for_install() {
+  if [[ ! -f "${CONFIG_PATH}" ]]; then
+    return 0
+  fi
+  python3 - "${CONFIG_PATH}" <<'PY'
+import json
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+plugins = cfg.setdefault("plugins", {})
+allow = plugins.get("allow")
+if isinstance(allow, list):
+    allow = [item for item in allow if item not in ("tokenpilot", "ecoclaw")]
+    if allow:
+        plugins["allow"] = allow
+    else:
+        plugins.pop("allow", None)
+
+entries = plugins.get("entries")
+if isinstance(entries, dict):
+    entries.pop("tokenpilot", None)
+    entries.pop("ecoclaw", None)
+    if not entries:
+        plugins.pop("entries", None)
+
+tools = cfg.get("tools")
+if isinstance(tools, dict):
+    elevated = tools.get("elevated")
+    if isinstance(elevated, dict):
+        allow_from = elevated.get("allowFrom")
+        if isinstance(allow_from, dict):
+            fixed = {}
+            changed = False
+            for key, value in allow_from.items():
+                if isinstance(value, bool):
+                    fixed[key] = ["exec"] if value else []
+                    changed = True
+                else:
+                    fixed[key] = value
+            if changed:
+                elevated["allowFrom"] = fixed
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+}
+
 sanitize_plugin_config
 
 archive_path="$("${SCRIPT_DIR}/pack_release.sh")"
-
-if openclaw plugins info tokenpilot >/dev/null 2>&1; then
-  printf 'y\n' | openclaw plugins uninstall tokenpilot >/dev/null 2>&1 || true
-fi
-if openclaw plugins info ecoclaw >/dev/null 2>&1; then
-  printf 'y\n' | openclaw plugins uninstall ecoclaw >/dev/null 2>&1 || true
-fi
-
-sanitize_plugin_config
+prepare_config_for_install
+rm -rf "${INSTALLED_PLUGIN_PATH}" "${LEGACY_INSTALLED_PLUGIN_PATH}"
 
 openclaw plugins install "${archive_path}"
+sanitize_plugin_config
 openclaw gateway restart
 
 printf 'Installed release plugin from %s\n' "${archive_path}"

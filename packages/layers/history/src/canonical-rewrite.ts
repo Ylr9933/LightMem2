@@ -131,7 +131,11 @@ export type RewriteCanonicalStateParams = {
   applyCanonicalEviction: CanonicalEvictionAdapter;
 };
 
-export async function rewriteCanonicalState(params: RewriteCanonicalStateParams): Promise<{ state: EcoCanonicalState; changed: boolean }> {
+export async function rewriteCanonicalState(params: RewriteCanonicalStateParams): Promise<{
+  state: EcoCanonicalState;
+  changed: boolean;
+  appliedEvictionTaskIds: string[];
+}> {
   const registry = await loadSessionTaskRegistry(params.stateDir, params.sessionId);
   const startMessages = params.state.messages;
   let messages = startMessages;
@@ -207,5 +211,6 @@ export async function rewriteCanonicalState(params: RewriteCanonicalStateParams)
         }
       : params.state,
     changed,
+    appliedEvictionTaskIds: evictionApplied.appliedTaskIds,
   };
 }

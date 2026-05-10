@@ -21,6 +21,9 @@
             "@tokenpilot/history": [
                 "packages/layers/history/src/index.ts"
             ],
+            "@tokenpilot/memory": [
+                "packages/layers/memory/src/index.ts"
+            ],
             "@tokenpilot/runtime-core": [
                 "packages/runtime-core/src/index.ts"
             ]
