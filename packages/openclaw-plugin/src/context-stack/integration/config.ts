@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { RuntimeModule, RuntimeModuleRuntime, RuntimeTurnContext } from "@tokenpilot/kernel";
 import { defaultPluginStateDir, pluginStateSubdir } from "@tokenpilot/runtime-core";
-import type { RuntimeModule, RuntimeModuleRuntime } from "../../../../kernel/src/interfaces.js";
-import type { RuntimeTurnContext } from "../../../../kernel/src/types.js";
-import type { PolicyModuleConfig } from "../../../../layers/decision/src/policy.js";
+import type { PolicyModuleConfig } from "@tokenpilot/decision";
 import { applyPolicyMonitors } from "./runtime-register.js";
 
 export type PluginRuntimeConfig = {

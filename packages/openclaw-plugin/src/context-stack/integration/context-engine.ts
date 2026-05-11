@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { rewriteCanonicalState, syncCanonicalStateFromTranscript } from "../page-out/canonical-rewrite.js";
+import { rewriteCanonicalState, syncCanonicalStateFromTranscript } from "../page-out/canonical-rewrite-adapter.js";
 import { estimateMessagesChars, saveCanonicalState } from "@tokenpilot/history";
 import { enqueueEvictedTasksForProceduralMemory } from "./procedural-memory.js";
 

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { runReductionAfterCall, resolveReductionPasses } from "@tokenpilot/runtime-core";
-import type { RuntimeTurnResult } from "../../../../kernel/src/types.js";
+import type { RuntimeTurnResult } from "@tokenpilot/kernel";
 
 export type AfterCallPassToggles = {
   repeatedReadDedup?: boolean;

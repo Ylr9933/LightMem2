@@ -4,7 +4,7 @@ import {
   runReductionBeforeCall as runLayerReductionBeforeCall,
   runReductionAfterCall as runLayerReductionAfterCall,
 } from "@tokenpilot/runtime-core";
-import { createPolicyModule } from "../../layers/decision/src/policy.js";
+import { createPolicyModule } from "@tokenpilot/decision";
 import {
   applyProxyReductionToInput,
   applyLayeredReductionAfterCall,
@@ -25,14 +25,14 @@ import {
   type ProxyAfterCallReductionResult,
   type ProxyReductionResult,
   type RootPromptRewrite,
-} from "./context-stack/request-preprocessing.js";
+} from "./context-stack/request-preprocessing-api.js";
 import {
   extractTurnObservations,
   inferObservationPayloadKind,
   readTranscriptEntriesForSession,
   syncRawSemanticTurnsFromTranscript,
   transcriptMessageStableId,
-} from "./context-stack/page-out.js";
+} from "./context-stack/page-out-api.js";
 import {
   MEMORY_FAULT_RECOVER_TOOL_NAME,
   archiveContent,
@@ -40,7 +40,7 @@ import {
   injectMemoryFaultProtocolInstructions,
   registerMemoryFaultRecoverTool,
   stripInternalPayloadMarkers,
-} from "./context-stack/page-in.js";
+} from "./context-stack/page-in-api.js";
 import {
   PluginRuntimeConfig,
   PluginLogger,
@@ -82,9 +82,10 @@ import {
   appendReductionPassTrace,
   appendTaskStateTrace,
 } from "./trace/io.js";
-import { applyToolResultPersistPolicy } from "./context-stack/request-preprocessing/tool-results-persist.js";
-import { contextSafeRecovery as importedContextSafeRecovery, hasRecoveryMarker as importedHasRecoveryMarker } from "./context-stack/page-in.js";
+import { applyToolResultPersistPolicy } from "./context-stack/request-preprocessing/tool-results-persist-policy.js";
+import { contextSafeRecovery as importedContextSafeRecovery, hasRecoveryMarker as importedHasRecoveryMarker } from "./context-stack/page-in-api.js";
 
+const TEST_WORKSPACE_DIR = "/tmp/tokenpilot-openclaw-plugin-tests";
 
 const proxyRuntimeHelpers = {
   detectUpstreamConfig,
@@ -124,6 +125,106 @@ const proxyRuntimeHelpers = {
   isSseContentType,
 };
 
+const defaultBeforeCallTestHelpers = {
+  applyPolicyBeforeCall,
+  buildLayeredReductionContext: (
+    payload: any,
+    triggerMinChars: number,
+    sessionId: string,
+    passToggles: any,
+    passOptions: any,
+    segmentAnchorByCallId: any,
+    orderedTurnAnchors: any,
+  ) => withTestWorkspaceDir(
+    buildLayeredReductionContext(
+      payload,
+      triggerMinChars,
+      sessionId,
+      {
+        memoryFaultRecoverToolName: MEMORY_FAULT_RECOVER_TOOL_NAME,
+        hasRecoveryMarker,
+        inferObservationPayloadKind,
+      },
+      passToggles,
+      passOptions,
+      segmentAnchorByCallId,
+      orderedTurnAnchors,
+    ),
+  ),
+  isReductionPassEnabled,
+  loadOrderedTurnAnchors: (stateDir: string, sessionId: string) =>
+    loadOrderedTurnAnchors(stateDir, sessionId, dedupeStrings),
+  loadSegmentAnchorByCallId: (stateDir: string, sessionId: string) =>
+    loadSegmentAnchorByCallId(stateDir, sessionId, {
+      dedupeStrings,
+      syncRawSemanticTurnsFromTranscript: async (dir: string, sid: string) => {
+        await syncRawSemanticTurnsFromTranscript(dir, sid, {
+          contentToText,
+          contextSafeRecovery,
+          memoryFaultRecoverToolName: MEMORY_FAULT_RECOVER_TOOL_NAME,
+        });
+      },
+    }),
+  makeLogger: () => makeLogger(),
+};
+
+function withTestReductionConfig(
+  options?: {
+    sessionId?: string;
+    engine?: "layered";
+    logger?: any;
+    triggerMinChars?: number;
+    maxToolChars?: number;
+    passToggles?: Record<string, unknown>;
+    passOptions?: Record<string, Record<string, unknown>>;
+    beforeCallModules?: {
+      policy?: any;
+      eviction?: any;
+    };
+    cfg?: any;
+  },
+): {
+  sessionId?: string;
+  engine?: "layered";
+  logger?: any;
+  triggerMinChars?: number;
+  maxToolChars?: number;
+  passToggles?: Record<string, unknown>;
+  passOptions?: Record<string, Record<string, unknown>>;
+  beforeCallModules?: {
+    policy?: any;
+    eviction?: any;
+  };
+  cfg?: any;
+} | undefined {
+  if (!options) {
+    return { cfg: { stateDir: TEST_WORKSPACE_DIR } };
+  }
+  return {
+    ...options,
+    cfg: {
+      ...(options.cfg ?? {}),
+      stateDir: options.cfg?.stateDir ?? TEST_WORKSPACE_DIR,
+    },
+  };
+}
+
+function withTestWorkspaceDir(result: ReturnType<typeof buildLayeredReductionContext>): ReturnType<typeof buildLayeredReductionContext> {
+  return {
+    ...result,
+    turnCtx: {
+      ...result.turnCtx,
+      metadata: {
+        ...(result.turnCtx.metadata ?? {}),
+        workspaceDir:
+          typeof result.turnCtx.metadata?.workspaceDir === "string"
+            ? result.turnCtx.metadata.workspaceDir
+            : TEST_WORKSPACE_DIR,
+      },
+    },
+  };
+}
+
 function contextSafeRecovery(details: unknown): Record<string, unknown> | undefined {
   return importedContextSafeRecovery(details, asRecord);
 }
@@ -134,7 +235,27 @@ function hasRecoveryMarker(details: unknown): boolean {
 
 const __testHooks = {
   rewritePayloadForStablePrefix,
-  applyProxyReductionToInput,
+  applyProxyReductionToInput: (
+    payload: any,
+    options?: {
+      sessionId?: string;
+      engine?: "layered";
+      logger?: any;
+      triggerMinChars?: number;
+      maxToolChars?: number;
+      passToggles?: Record<string, unknown>;
+      passOptions?: Record<string, Record<string, unknown>>;
+      beforeCallModules?: {
+        policy?: any;
+        eviction?: any;
+      };
+      cfg?: any;
+    },
+  ) => applyProxyReductionToInput(
+    payload,
+    withTestReductionConfig(options),
+    defaultBeforeCallTestHelpers,
+  ),
   stripInternalPayloadMarkers,
   normalizeConfig,
 };

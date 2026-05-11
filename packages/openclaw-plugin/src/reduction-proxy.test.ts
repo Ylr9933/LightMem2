@@ -14,7 +14,21 @@ const hooks = plugin.__testHooks as {
   applyProxyReductionToInput: (
     payload: any,
     options?: Record<string, unknown>,
-  ) => Promise<{ changedItems: number; changedBlocks: number; savedChars: number }> | { changedItems: number; changedBlocks: number; savedChars: number };
+  ) => Promise<{
+    changedItems: number;
+    changedBlocks: number;
+    savedChars: number;
+    diagnostics?: {
+      skippedReason?: string;
+    };
+  }> | {
+    changedItems: number;
+    changedBlocks: number;
+    savedChars: number;
+    diagnostics?: {
+      skippedReason?: string;
+    };
+  };
   stripInternalPayloadMarkers: (payload: any) => void;
   normalizeConfig: (raw: unknown) => any;
 };
@@ -36,7 +50,8 @@ test("applyProxyReductionToInput reduces large tool payload and preserves non-to
   assert.equal(out.changedBlocks, 1);
   assert.ok(out.savedChars > 0);
   assert.match(String(payload.input[0].content), /\[Tool payload trimmed\]/);
-  assert.match(String(payload.input[0].content), /memory_fault\('/);
+  assert.match(String(payload.input[0].content), /memory_fault_recover/);
+  assert.match(String(payload.input[0].content), /"dataKey":/);
   assert.equal(payload.input[1].content, "keep me unchanged");
 });
 
@@ -117,7 +132,7 @@ test("applyProxyReductionToInput still runs with policy-only before-call modules
     },
   });
 
-  const { createPolicyModule } = await import("../../layers/decision/src/policy.js");
+  const { createPolicyModule } = await import("@tokenpilot/decision");
 
   const payload: any = {
     model: "tokenpilot/gpt-5.4-mini",
@@ -162,9 +177,10 @@ test("applyProxyReductionToInput still runs with policy-only before-call modules
     cfg,
   });
 
-  assert.equal(out.changedItems, 1);
-  assert.equal(out.changedBlocks, 1);
-  assert.match(String(payload.input[0].content), /\[Archived read result/);
+  assert.equal(out.changedItems, 0);
+  assert.equal(out.changedBlocks, 0);
+  assert.equal(out.savedChars, 0);
+  assert.equal(String(out.diagnostics?.skippedReason), "pipeline_no_effect");
   assert.equal(
     payload.input[1].content,
     "Successfully wrote 120 bytes to /workspace/output.md",

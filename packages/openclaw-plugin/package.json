@@ -24,7 +24,9 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@tokenpilot/decision": "workspace:*",
     "@tokenpilot/history": "workspace:*",
+    "@tokenpilot/kernel": "workspace:*",
     "@tokenpilot/memory": "workspace:*",
     "@tokenpilot/runtime-core": "workspace:*"
   },
