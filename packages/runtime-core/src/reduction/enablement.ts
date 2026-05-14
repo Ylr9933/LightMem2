@@ -4,6 +4,11 @@ export type ReductionPassToggles = {
   htmlSlimming?: boolean;
   execOutputTruncation?: boolean;
   agentsStartupOptimization?: boolean;
+  formatSlimming?: boolean;
+  formatCleaning?: boolean;
+  pathTruncation?: boolean;
+  imageDownsample?: boolean;
+  lineNumberStrip?: boolean;
 };
 
 export function isReductionPassEnabled(
@@ -22,6 +27,16 @@ export function isReductionPassEnabled(
       return passToggles.execOutputTruncation ?? true;
     case "agents_startup_optimization":
       return passToggles.agentsStartupOptimization ?? true;
+    case "format_slimming":
+      return passToggles.formatSlimming ?? true;
+    case "format_cleaning":
+      return passToggles.formatCleaning ?? true;
+    case "path_truncation":
+      return passToggles.pathTruncation ?? true;
+    case "image_downsample":
+      return passToggles.imageDownsample ?? true;
+    case "line_number_strip":
+      return passToggles.lineNumberStrip ?? true;
     default:
       return true;
   }

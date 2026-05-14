@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 normalize_openclaw_runtime_env() {
   local openclaw_home="${TOKENPILOT_OPENCLAW_HOME:-${HOME}}"
   local runtime_local_bin="${openclaw_home}/.local/bin"
+  local shared_local_bin="/mnt/20t/xubuqiang/.local/bin"
   export HOME="${openclaw_home}"
   export OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-${HOME}/.openclaw}"
   export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/openclaw-cache}"
@@ -17,6 +18,12 @@ normalize_openclaw_runtime_env() {
     *":${runtime_local_bin}:"*) ;;
     *) export PATH="${runtime_local_bin}:${PATH}" ;;
   esac
+  if [[ -d "${shared_local_bin}" ]]; then
+    case ":${PATH}:" in
+      *":${shared_local_bin}:"*) ;;
+      *) export PATH="${shared_local_bin}:${PATH}" ;;
+    esac
+  fi
   mkdir -p "${XDG_CACHE_HOME}" "${XDG_CACHE_HOME}/fontconfig" "${XDG_CONFIG_HOME}" "${runtime_local_bin}" "${UV_CACHE_DIR}"
 }
 
@@ -217,18 +224,24 @@ ensure_plugin_runtime_config() {
   local enable_reduction="${TOKENPILOT_ENABLE_REDUCTION:-true}"
   local reduction_trigger_min_chars="${TOKENPILOT_REDUCTION_TRIGGER_MIN_CHARS:-2200}"
   local reduction_max_tool_chars="${TOKENPILOT_REDUCTION_MAX_TOOL_CHARS:-1200}"
-  local reduction_pass_repeated_read_dedup="${TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP:-true}"
+  local reduction_pass_repeated_read_dedup="${TOKENPILOT_REDUCTION_PASS_REPEATED_READ_DEDUP:-false}"
   local reduction_pass_tool_payload_trim="${TOKENPILOT_REDUCTION_PASS_TOOL_PAYLOAD_TRIM:-false}"
-  local reduction_pass_html_slimming="${TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING:-true}"
-  local reduction_pass_exec_output_truncation="${TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-true}"
-  local reduction_pass_agents_startup_optimization="${TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-true}"
+  local reduction_pass_html_slimming="${TOKENPILOT_REDUCTION_PASS_HTML_SLIMMING:-false}"
+  local reduction_pass_exec_output_truncation="${TOKENPILOT_REDUCTION_PASS_EXEC_OUTPUT_TRUNCATION:-false}"
+  local reduction_pass_agents_startup_optimization="${TOKENPILOT_REDUCTION_PASS_AGENTS_STARTUP_OPTIMIZATION:-false}"
+  local reduction_pass_format_slimming="${TOKENPILOT_REDUCTION_PASS_FORMAT_SLIMMING:-false}"
+  local reduction_pass_format_cleaning="${TOKENPILOT_REDUCTION_PASS_FORMAT_CLEANING:-false}"
+  local reduction_pass_path_truncation="${TOKENPILOT_REDUCTION_PASS_PATH_TRUNCATION:-false}"
+  local reduction_pass_image_downsample="${TOKENPILOT_REDUCTION_PASS_IMAGE_DOWNSAMPLE:-false}"
+  local reduction_pass_line_number_strip="${TOKENPILOT_REDUCTION_PASS_LINE_NUMBER_STRIP:-false}"
+  local dynamic_context_target="${TOKENPILOT_DYNAMIC_CONTEXT_TARGET:-developer}"
   local default_model="${TOKENPILOT_MODEL:-}"
   local exec_host="${TOKENPILOT_EXEC_HOST:-gateway}"
   local exec_security="${TOKENPILOT_EXEC_SECURITY:-full}"
   local exec_ask="${TOKENPILOT_EXEC_ASK:-off}"
   local elevated_enabled="${TOKENPILOT_ELEVATED_ENABLED:-true}"
   local elevated_allow_from="${TOKENPILOT_ELEVATED_ALLOW_FROM:-webchat}"
-  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-false}"
+  local enable_eviction="${TOKENPILOT_ENABLE_EVICTION:-true}"
   local eviction_policy="${TOKENPILOT_EVICTION_POLICY:-lru}"
   local eviction_min_block_chars="${TOKENPILOT_EVICTION_MIN_BLOCK_CHARS:-256}"
   local eviction_replacement_mode="${TOKENPILOT_EVICTION_REPLACEMENT_MODE:-drop}"
@@ -258,7 +271,7 @@ ensure_plugin_runtime_config() {
     return 0
   fi
 
-  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${enable_reduction}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${elevated_enabled}" "${elevated_allow_from}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" "${task_state_estimator_lifecycle_mode}" "${task_state_estimator_eviction_promotion_policy}" "${task_state_estimator_eviction_promotion_hot_tail_size}" "${memory_enabled}" "${memory_auto_distill}" "${memory_distiller_type}" "${memory_batch_size}" "${memory_top_k}" "${memory_inject_as_system_hint}" "${memory_distill_base_url}" "${memory_distill_api_key}" "${memory_distill_model}" "${memory_distill_timeout_ms}" <<'PATCH_PY'
+  python3 - "${config_path}" "${proxy_base_url}" "${proxy_api_key}" "${proxy_port}" "${plugin_load_path}" "${proxy_pure_forward}" "${enable_reduction}" "${reduction_trigger_min_chars}" "${reduction_max_tool_chars}" "${reduction_pass_repeated_read_dedup}" "${reduction_pass_tool_payload_trim}" "${reduction_pass_html_slimming}" "${reduction_pass_exec_output_truncation}" "${reduction_pass_agents_startup_optimization}" "${reduction_pass_format_slimming}" "${reduction_pass_format_cleaning}" "${reduction_pass_path_truncation}" "${reduction_pass_image_downsample}" "${reduction_pass_line_number_strip}" "${dynamic_context_target}" "${default_model}" "${exec_host}" "${exec_security}" "${exec_ask}" "${elevated_enabled}" "${elevated_allow_from}" "${enable_eviction}" "${eviction_policy}" "${eviction_min_block_chars}" "${eviction_replacement_mode}" "${task_state_estimator_enabled}" "${task_state_estimator_base_url}" "${task_state_estimator_api_key}" "${task_state_estimator_model}" "${task_state_estimator_request_timeout_ms}" "${task_state_estimator_batch_turns}" "${task_state_estimator_eviction_lookahead_turns}" "${task_state_estimator_input_mode}" "${task_state_estimator_lifecycle_mode}" "${task_state_estimator_eviction_promotion_policy}" "${task_state_estimator_eviction_promotion_hot_tail_size}" "${memory_enabled}" "${memory_auto_distill}" "${memory_distiller_type}" "${memory_batch_size}" "${memory_top_k}" "${memory_inject_as_system_hint}" "${memory_distill_base_url}" "${memory_distill_api_key}" "${memory_distill_model}" "${memory_distill_timeout_ms}" <<'PATCH_PY'
 import json
 import os
 import sys
@@ -278,6 +291,12 @@ import sys
     pass_html_slimming_raw,
     pass_exec_output_truncation_raw,
     pass_agents_startup_optimization_raw,
+    pass_format_slimming_raw,
+    pass_format_cleaning_raw,
+    pass_path_truncation_raw,
+    pass_image_downsample_raw,
+    pass_line_number_strip_raw,
+    dynamic_context_target,
     default_model,
     exec_host,
     exec_security,
@@ -309,7 +328,7 @@ import sys
     memory_distill_api_key,
     memory_distill_model,
     memory_distill_timeout_ms_raw,
-) = sys.argv[1:46]
+) = sys.argv[1:52]
 
 proxy_port = int(proxy_port_raw)
 proxy_pure_forward = str(proxy_pure_forward_raw).strip().lower() in ("1", "true", "yes", "on")
@@ -322,6 +341,11 @@ pass_tool_payload_trim = parse_bool(pass_tool_payload_trim_raw)
 pass_html_slimming = parse_bool(pass_html_slimming_raw)
 pass_exec_output_truncation = parse_bool(pass_exec_output_truncation_raw)
 pass_agents_startup_optimization = parse_bool(pass_agents_startup_optimization_raw)
+pass_format_slimming = parse_bool(pass_format_slimming_raw)
+pass_format_cleaning = parse_bool(pass_format_cleaning_raw)
+pass_path_truncation = parse_bool(pass_path_truncation_raw)
+pass_image_downsample = parse_bool(pass_image_downsample_raw)
+pass_line_number_strip = parse_bool(pass_line_number_strip_raw)
 enable_eviction = parse_bool(enable_eviction_raw)
 elevated_enabled = parse_bool(elevated_enabled_raw)
 eviction_min_block_chars = int(eviction_min_block_chars_raw)
@@ -397,11 +421,15 @@ modules["eviction"] = enable_eviction
 
 tokenpilot_cfg.pop("compaction", None)
 tokenpilot_cfg.pop("proxyMode", None)
-tokenpilot_cfg.pop("hooks", None)
 modules = tokenpilot_cfg.get("modules")
 if isinstance(modules, dict):
     modules.pop("compaction", None)
     modules.pop("decisionLedger", None)
+
+hooks_cfg = tokenpilot_cfg.setdefault("hooks", {})
+hooks_cfg["beforeToolCall"] = True
+hooks_cfg["toolResultPersist"] = False
+hooks_cfg["dynamicContextTarget"] = "user" if str(dynamic_context_target).strip().lower() == "user" else "developer"
 
 context_engine = tokenpilot_cfg.setdefault("contextEngine", {})
 context_engine["enabled"] = True
@@ -425,6 +453,11 @@ passes["htmlSlimming"] = pass_html_slimming
 passes["execOutputTruncation"] = pass_exec_output_truncation
 passes["agentsStartupOptimization"] = pass_agents_startup_optimization
 pass_options = reduction.setdefault("passOptions", {})
+pass_options["formatSlimming"] = {"enabled": pass_format_slimming}
+pass_options["formatCleaning"] = {"enabled": pass_format_cleaning}
+pass_options["pathTruncation"] = {"enabled": pass_path_truncation}
+pass_options["imageDownsample"] = {"enabled": pass_image_downsample}
+pass_options["lineNumberStrip"] = {"enabled": pass_line_number_strip}
 
 def maybe_apply_json_env(env_name: str, key: str) -> None:
     raw = os.environ.get(env_name, "").strip()
@@ -632,6 +665,48 @@ tokenpilot_cfg["modules"] = {
     "eviction": enable_eviction,
 }
 
+reduction = tokenpilot_cfg.get("reduction")
+if not isinstance(reduction, dict):
+    reduction = {}
+tokenpilot_cfg["reduction"] = reduction
+
+passes = reduction.get("passes")
+if not isinstance(passes, dict):
+    passes = {}
+allowed_passes = {
+    "repeatedReadDedup",
+    "toolPayloadTrim",
+    "htmlSlimming",
+    "execOutputTruncation",
+    "agentsStartupOptimization",
+    "memoryFaultRecovery",
+}
+for key in list(passes.keys()):
+    if key not in allowed_passes:
+        passes.pop(key, None)
+reduction["passes"] = passes
+
+pass_options = reduction.get("passOptions")
+if not isinstance(pass_options, dict):
+    pass_options = {}
+allowed_pass_options = {
+    "repeatedReadDedup",
+    "toolPayloadTrim",
+    "htmlSlimming",
+    "execOutputTruncation",
+    "agentsStartupOptimization",
+    "memoryFaultRecovery",
+    "formatSlimming",
+    "formatCleaning",
+    "pathTruncation",
+    "imageDownsample",
+    "lineNumberStrip",
+}
+for key in list(pass_options.keys()):
+    if key not in allowed_pass_options:
+        pass_options.pop(key, None)
+reduction["passOptions"] = pass_options
+
 tmp_path = f"{config_path}.tmp"
 with open(tmp_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -697,11 +772,18 @@ import sys
 from pathlib import Path
 
 approvals_path = Path(sys.argv[1])
+home = str(Path.home())
 
 allowlist = [
+    {"id": "bin_sh", "pattern": "/bin/sh"},
+    {"id": "bin_bash", "pattern": "/bin/bash"},
+    {"id": "usr_bin_bash", "pattern": "/usr/bin/bash"},
+    {"id": "usr_bin_env", "pattern": "/usr/bin/env"},
     {"id": "usr_bin_find", "pattern": "/usr/bin/find"},
     {"id": "usr_bin_ls", "pattern": "/usr/bin/ls"},
     {"id": "usr_bin_sort", "pattern": "/usr/bin/sort"},
+    {"id": "usr_bin_pwd", "pattern": "/usr/bin/pwd"},
+    {"id": "usr_bin_sed", "pattern": "/usr/bin/sed"},
     {"id": "usr_bin_grep", "pattern": "/usr/bin/grep"},
     {"id": "usr_bin_head", "pattern": "/usr/bin/head"},
     {"id": "usr_bin_tail", "pattern": "/usr/bin/tail"},
@@ -709,6 +791,16 @@ allowlist = [
     {"id": "usr_bin_cut", "pattern": "/usr/bin/cut"},
     {"id": "usr_bin_tr", "pattern": "/usr/bin/tr"},
     {"id": "usr_bin_uniq", "pattern": "/usr/bin/uniq"},
+    {"id": "usr_bin_true", "pattern": "/usr/bin/true"},
+    {"id": "usr_bin_python3", "pattern": "/usr/bin/python3"},
+    {"id": "usr_bin_git", "pattern": "/usr/bin/git"},
+    {"id": "usr_bin_gh", "pattern": "/usr/bin/gh"},
+    {"id": "usr_local_bin_python3", "pattern": "/usr/local/bin/python3"},
+    {"id": "mnt20_local_bin_gh", "pattern": "/mnt/20t/xubuqiang/.local/bin/gh"},
+    {"id": "mnt20_local_share_gh_bin", "pattern": "/mnt/20t/xubuqiang/.local/share/gh-cli/gh.bin"},
+    {"id": "home_local_bin_gws", "pattern": home + "/.local/bin/gws"},
+    {"id": "home_local_bin_fws", "pattern": home + "/.local/bin/fws"},
+    {"id": "home_nvm_bin_fws", "pattern": home + "/.nvm/versions/node/v22.16.0/bin/fws"},
 ]
 
 if approvals_path.exists():
@@ -1039,6 +1131,12 @@ PY
       OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+      GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${GOOGLE_WORKSPACE_CLI_CONFIG_DIR:-}" \
+      GOOGLE_WORKSPACE_CLI_TOKEN="${GOOGLE_WORKSPACE_CLI_TOKEN:-}" \
+      HTTPS_PROXY="${HTTPS_PROXY:-}" \
+      SSL_CERT_FILE="${SSL_CERT_FILE:-}" \
+      GH_TOKEN="${GH_TOKEN:-}" \
+      GH_REPO="${GH_REPO:-}" \
       TOKENPILOT_UPSTREAM_HTTP_PROXY="${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" \
       TOKENPILOT_UPSTREAM_HTTPS_PROXY="${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" \
       TOKENPILOT_UPSTREAM_NO_PROXY="${TOKENPILOT_UPSTREAM_NO_PROXY:-}" \
@@ -1070,6 +1168,12 @@ PY
       OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR}" \
       XDG_CACHE_HOME="${XDG_CACHE_HOME}" \
       XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+      GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${GOOGLE_WORKSPACE_CLI_CONFIG_DIR:-}" \
+      GOOGLE_WORKSPACE_CLI_TOKEN="${GOOGLE_WORKSPACE_CLI_TOKEN:-}" \
+      HTTPS_PROXY="${HTTPS_PROXY:-}" \
+      SSL_CERT_FILE="${SSL_CERT_FILE:-}" \
+      GH_TOKEN="${GH_TOKEN:-}" \
+      GH_REPO="${GH_REPO:-}" \
       TOKENPILOT_UPSTREAM_HTTP_PROXY="${TOKENPILOT_UPSTREAM_HTTP_PROXY:-}" \
       TOKENPILOT_UPSTREAM_HTTPS_PROXY="${TOKENPILOT_UPSTREAM_HTTPS_PROXY:-}" \
       TOKENPILOT_UPSTREAM_NO_PROXY="${TOKENPILOT_UPSTREAM_NO_PROXY:-}" \

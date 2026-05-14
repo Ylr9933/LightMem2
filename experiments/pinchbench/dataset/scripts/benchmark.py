@@ -479,6 +479,12 @@ def _parse_args() -> argparse.Namespace:
         default=int(os.environ.get("PINCHBENCH_MAX_TOOL_CALLS_PER_TASK", "120")),
         help="Hard cap for tool calls per task (0 disables guard).",
     )
+    parser.add_argument(
+        "--max-tasks",
+        type=int,
+        default=int(os.environ.get("PINCHBENCH_MAX_TASKS", "0")),
+        help="Limit the number of selected tasks after suite filtering (0 disables limit).",
+    )
     return parser.parse_args()
 
 
@@ -1092,8 +1098,8 @@ def _run_task_job(
     logger.info("%s", "=" * 80)
 
     model_slug = slugify_model(model)
-    agent_workspace = agent_workspace_override or Path(
-        f"/tmp/pinchbench/{run_id}/agent_workspace_j{job_index:04d}"
+    agent_workspace = agent_workspace_override or (
+        PINCHBENCH_TMP_ROOT / run_id / f"agent_workspace_j{job_index:04d}"
     )
 
     agent_id = agent_id_override or f"bench-{model_slug}-{run_id}-j{job_index:04d}"
@@ -1594,6 +1600,9 @@ def main():
 
     local_dataset_policy = _load_local_dataset_policy(tasks_dir)
     tasks_to_run = _select_tasks(runner.tasks, args.suite, local_dataset_policy)
+    if args.max_tasks > 0:
+        tasks_to_run = tasks_to_run[: args.max_tasks]
+        logger.info("Applied max task limit: %s", args.max_tasks)
     logger.info("Selected %s tasks for suite=%s (loaded=%s)", len(tasks_to_run), args.suite, len(runner.tasks))
     results = []
     grades_by_task_id = {}

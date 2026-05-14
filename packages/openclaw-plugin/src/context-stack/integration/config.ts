@@ -17,7 +17,11 @@ export type PluginRuntimeConfig = {
   proxyAutostart?: boolean;
   proxyPort?: number;
   proxyMode?: { pureForward?: boolean };
-  hooks?: { beforeToolCall?: boolean; toolResultPersist?: boolean };
+  hooks?: {
+    beforeToolCall?: boolean;
+    toolResultPersist?: boolean;
+    dynamicContextTarget?: "developer" | "user";
+  };
   contextEngine?: {
     enabled?: boolean;
     pruneThresholdChars?: number;
@@ -85,6 +89,11 @@ export type PluginRuntimeConfig = {
       htmlSlimming?: boolean;
       execOutputTruncation?: boolean;
       agentsStartupOptimization?: boolean;
+      formatSlimming?: boolean;
+      formatCleaning?: boolean;
+      pathTruncation?: boolean;
+      imageDownsample?: boolean;
+      lineNumberStrip?: boolean;
     };
     passOptions?: Record<string, Record<string, unknown> | undefined>;
   };
@@ -168,7 +177,11 @@ export function normalizeConfig(
     proxyAutostart: cfg.proxyAutostart ?? false,
     proxyPort: Math.max(1025, Math.min(65535, cfg.proxyPort ?? 17667)),
     proxyMode: { pureForward: proxyMode.pureForward ?? false },
-    hooks: { beforeToolCall: hooks.beforeToolCall ?? false, toolResultPersist: hooks.toolResultPersist ?? false },
+    hooks: {
+      beforeToolCall: hooks.beforeToolCall ?? true,
+      toolResultPersist: hooks.toolResultPersist ?? false,
+      dynamicContextTarget: hooks.dynamicContextTarget === "user" ? "user" : "developer",
+    },
     contextEngine: {
       enabled: contextEngine.enabled ?? false,
       pruneThresholdChars: Math.max(10_000, contextEngine.pruneThresholdChars ?? 100_000),
@@ -284,6 +297,11 @@ export function normalizeConfig(
         htmlSlimming: reductionPasses.htmlSlimming ?? false,
         execOutputTruncation: reductionPasses.execOutputTruncation ?? false,
         agentsStartupOptimization: reductionPasses.agentsStartupOptimization ?? false,
+        formatSlimming: reductionPasses.formatSlimming ?? false,
+        formatCleaning: reductionPasses.formatCleaning ?? false,
+        pathTruncation: reductionPasses.pathTruncation ?? false,
+        imageDownsample: reductionPasses.imageDownsample ?? false,
+        lineNumberStrip: reductionPasses.lineNumberStrip ?? false,
       },
       passOptions: {
         repeatedReadDedup: reductionPassOptions.repeatedReadDedup && typeof reductionPassOptions.repeatedReadDedup === "object" ? { ...reductionPassOptions.repeatedReadDedup } : {},

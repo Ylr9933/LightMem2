@@ -77,6 +77,10 @@ import {
   safeId,
 } from "./context-stack/integration.js";
 import {
+  maybeBlockRepeatedToolCall,
+  recordToolCallMemo,
+} from "./context-stack/integration/tool-call-memo.js";
+import {
   appendJsonl,
   appendForwardedInputDump,
   appendReductionPassTrace,
@@ -275,8 +279,22 @@ module.exports = {
     }
 
     if (cfg.hooks.beforeToolCall) {
-      hookOn(api, "before_tool_call", (event: any) => {
+      hookOn(api, "before_tool_call", async (event: any) => {
+        const blockReason = await maybeBlockRepeatedToolCall(event, cfg, {
+          appendTaskStateTrace,
+        });
+        if (blockReason) {
+          return { block: true, blockReason };
+        }
         return { params: applyBeforeToolCallDefaults(event) };
+      });
+
+      hookOn(api, "after_tool_call", (event: any) => {
+        void recordToolCallMemo(event, cfg, {
+          safeId,
+          appendTaskStateTrace,
+          logger,
+        });
       });
     }
 

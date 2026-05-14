@@ -21,6 +21,7 @@ SESSION_MODE=""
 PHASE="full"
 INPUT_JSON=""
 OUTPUT_DIR_OVERRIDE=""
+MAX_TASKS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --phase) PHASE="${2:-}"; shift 2 ;;
     --input-json) INPUT_JSON="${2:-}"; shift 2 ;;
     --output-dir) OUTPUT_DIR_OVERRIDE="${2:-}"; shift 2 ;;
+    --max-tasks) MAX_TASKS="${2:-}"; shift 2 ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 1
@@ -109,6 +111,8 @@ RUN_LOG_PREFIX="${LOG_DIR}/pinchbench_method_${RUN_TAG}"
 RUN_LOG_FILE="${RUN_LOG_PREFIX}_generate.log"
 EVAL_LOG_FILE="${RUN_LOG_PREFIX}_eval.log"
 EVAL_JSONL_FILE="${RUN_LOG_PREFIX}_eval.jsonl"
+TRACE_LIVE_LOG_FILE="${RUN_LOG_PREFIX}_plugin_trace_live.log"
+GATEWAY_LIVE_LOG_FILE="${RUN_LOG_PREFIX}_gateway_live.log"
 RUN_START_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}" "${REPORT_DIR}"
 export PINCHBENCH_EVAL_LOG_FILE="${EVAL_LOG_FILE}"
@@ -119,6 +123,7 @@ PLUGIN_TRACE_FILE="${PLUGIN_STATE_DIR}/task-state/trace.jsonl"
 GATEWAY_LOG_FILE="/tmp/openclaw_gateway.log"
 TRACE_TAIL_PID=""
 GATEWAY_TAIL_PID=""
+LIVE_DEBUG_STDOUT="${TOKENPILOT_LIVE_DEBUG_STDOUT:-false}"
 
 cleanup_live_debug_tails() {
   if [[ -n "${TRACE_TAIL_PID}" ]]; then
@@ -140,6 +145,8 @@ run_method_exit_cleanup() {
 start_live_debug_tails() {
   mkdir -p "$(dirname "${PLUGIN_TRACE_FILE}")"
   : > "${PLUGIN_TRACE_FILE}"
+  : > "${TRACE_LIVE_LOG_FILE}"
+  : > "${GATEWAY_LIVE_LOG_FILE}"
   (
     stdbuf -oL tail -n 0 -F "${PLUGIN_TRACE_FILE}" 2>/dev/null \
       | python3 -u -c '
@@ -163,7 +170,9 @@ for raw in sys.stdin:
     if obj.get("stage") not in interesting:
         continue
     print("[plugin-trace] " + json.dumps(obj, ensure_ascii=False), flush=True)
-' || true
+' \
+      | if [[ "${LIVE_DEBUG_STDOUT}" == "true" ]]; then cat; else tee -a "${TRACE_LIVE_LOG_FILE}" >/dev/null; fi \
+      || true
   ) &
   TRACE_TAIL_PID=$!
 
@@ -177,7 +186,9 @@ for raw in sys.stdin:
     if "tokenpilot" not in line.lower() and "plugin-runtime" not in line.lower():
         continue
     print("[gateway-log] " + line, flush=True)
-' || true
+' \
+      | if [[ "${LIVE_DEBUG_STDOUT}" == "true" ]]; then cat; else tee -a "${GATEWAY_LIVE_LOG_FILE}" >/dev/null; fi \
+      || true
   ) &
   GATEWAY_TAIL_PID=$!
 }
@@ -194,6 +205,9 @@ BENCH_ARGS=(
 )
 if [[ "${PHASE}" == "generate" ]]; then
   BENCH_ARGS+=(--generate-only)
+fi
+if [[ -n "${MAX_TASKS}" ]]; then
+  BENCH_ARGS+=(--max-tasks "${MAX_TASKS}")
 fi
 
 DATASET_DIR="$(resolve_dataset_dir)"
@@ -221,6 +235,12 @@ else
 fi
 
 echo "Run log saved to: ${RUN_LOG_FILE}"
+if [[ -f "${TRACE_LIVE_LOG_FILE}" ]]; then
+  echo "Plugin trace live log saved to: ${TRACE_LIVE_LOG_FILE}"
+fi
+if [[ -f "${GATEWAY_LIVE_LOG_FILE}" ]]; then
+  echo "Gateway live log saved to: ${GATEWAY_LIVE_LOG_FILE}"
+fi
 if [[ -f "${EVAL_LOG_FILE}" ]]; then
   echo "Eval log saved to: ${EVAL_LOG_FILE}"
 fi

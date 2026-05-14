@@ -8,6 +8,11 @@ export type AfterCallPassToggles = {
   htmlSlimming?: boolean;
   execOutputTruncation?: boolean;
   agentsStartupOptimization?: boolean;
+  formatSlimming?: boolean;
+  formatCleaning?: boolean;
+  pathTruncation?: boolean;
+  imageDownsample?: boolean;
+  lineNumberStrip?: boolean;
 };
 
 export type ProxyAfterCallReductionResult = {

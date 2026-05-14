@@ -8,6 +8,26 @@ method path inside the main repository.
 - `run_method.sh`
   - single-agent method entrypoint
   - supports `isolated` and `continuous`
+- `run_method_by_category_continuous.sh`
+  - category-isolated orchestration wrapper
+  - runs one continuous session per manifest category
+  - useful for measuring within-category memory/distill effects without cross-category leakage
+- `run_method_by_category_distill_only.sh`
+  - convenience wrapper for category-isolated continuous runs
+  - keeps reduction enabled but disables all concrete reduction passes
+  - enables estimator + eviction + procedural-memory distill
+  - keeps `memory.topK=0` by default so the run measures distill production without retrieval/injection
+- `run_method_by_category_distill_inject.sh`
+  - convenience wrapper for category-isolated continuous runs
+  - keeps reduction enabled but disables all concrete reduction passes
+  - enables estimator + eviction + procedural-memory distill
+  - enables retrieval/injection by default with `memory.topK=1`
+  - injects retrieved memory as a system/developer-side hint by default
+- `run_method_isolated_reduction_ablation.sh`
+  - isolated-session reduction-pass ablation wrapper
+  - runs one variant with all reduction passes disabled
+  - runs one variant with all exposed reduction passes enabled
+  - creates a dedicated OpenClaw home/state dir and dedicated gateway/proxy ports per variant
 - `run_baseline.sh`
   - single-agent baseline entrypoint
   - supports `isolated` and `continuous`
@@ -72,6 +92,56 @@ Baseline runs may additionally use:
 
 If unset, the baseline entrypoint defaults to shorthand `gpt-5.4-mini` and
 reuses the same provider-prefix resolution path as the method entrypoint.
+
+## Category-Isolated Continuous Runs
+
+`run_method_by_category_continuous.sh` reads `dataset/tasks/manifest.yaml` and
+runs each category as its own continuous-session benchmark slice. This is useful
+when you want:
+
+- category-level isolation between unrelated task families
+- continuous transcript accumulation within a category
+- a simple full-benchmark way to test memory distill / retrieval effects
+
+Common envs:
+
+- `PINCHBENCH_CATEGORY_FILTER`
+  - comma-separated categories to run
+  - example: `meeting_analysis,analysis`
+- `PINCHBENCH_CATEGORY_OUTPUT_ROOT`
+  - root directory for per-category outputs
+- `PINCHBENCH_CATEGORY_RUN_TAG`
+  - optional custom run tag
+
+Example:
+
+```bash
+TOKENPILOT_MEMORY_TOP_K=1 \
+TOKENPILOT_MEMORY_ENABLED=true \
+TOKENPILOT_MEMORY_AUTO_DISTILL=true \
+TOKENPILOT_SESSION_MODE=continuous \
+experiments/pinchbench/scripts/run_method_by_category_continuous.sh
+```
+
+Distill-only example:
+
+```bash
+experiments/pinchbench/scripts/run_method_by_category_distill_only.sh
+```
+
+Distill + injection example:
+
+```bash
+experiments/pinchbench/scripts/run_method_by_category_distill_inject.sh
+```
+
+Optional env overrides:
+
+- `PINCHBENCH_CATEGORY_FILTER`
+- `PINCHBENCH_TMP_ROOT`
+- `TOKENPILOT_TASK_STATE_ESTIMATOR_API_KEY`
+- `TOKENPILOT_TASK_STATE_ESTIMATOR_BATCH_TURNS`
+- `TOKENPILOT_MEMORY_TOP_K`
 
 ## Deferred Surface
 

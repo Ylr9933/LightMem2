@@ -88,6 +88,14 @@ PINCHBENCH_TMP_ROOT = Path(
     os.environ.get("PINCHBENCH_TMP_ROOT", "/tmp/pinchbench")
 ).resolve()
 OPENCLAW_PROFILE = os.environ.get("OPENCLAW_PROFILE", "").strip()
+DISABLE_CANONICAL_STATE_FALLBACK = os.environ.get(
+    "PINCHBENCH_DISABLE_CANONICAL_STATE_FALLBACK", ""
+).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def _openclaw_cmd(*args: str) -> List[str]:
@@ -173,6 +181,45 @@ def _build_openclaw_subprocess_env() -> Dict[str, str]:
     if "XDG_CONFIG_HOME" in os.environ:
         env["XDG_CONFIG_HOME"] = os.environ["XDG_CONFIG_HOME"]
     return env
+
+
+def _sync_agent_tokenpilot_models(agent_id: str) -> bool:
+    """Ensure agent-local models.json points tokenpilot to the current embedded proxy port."""
+    proxy_port = str(os.environ.get("TOKENPILOT_PROXY_PORT", "")).strip()
+    if not proxy_port:
+        return False
+
+    models_path = OPENCLAW_CONFIG_PATH.parent / "agents" / agent_id / "agent" / "models.json"
+    if not models_path.exists():
+        return False
+
+    try:
+        payload = json.loads(models_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to read agent models for %s: %s", agent_id, exc)
+        return False
+
+    providers = payload.get("providers")
+    if not isinstance(providers, dict):
+        return False
+    tokenpilot = providers.get("tokenpilot")
+    if not isinstance(tokenpilot, dict):
+        return False
+
+    desired_base = f"http://127.0.0.1:{proxy_port}/v1"
+    current_base = str(tokenpilot.get("baseUrl") or "")
+    if current_base == desired_base:
+        return False
+
+    tokenpilot["baseUrl"] = desired_base
+    try:
+        models_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Failed to rewrite agent models for %s: %s", agent_id, exc)
+        return False
+
+    logger.info("Rewrote %s tokenpilot baseUrl: %s -> %s", agent_id, current_base, desired_base)
+    return True
 
 
 @contextmanager
@@ -439,8 +486,12 @@ def ensure_agent_exists(agent_id: str, model_id: str, workspace_dir: Path) -> bo
             logger.warning(
                 "Agent creation returned %s: %s", create_result.returncode, create_result.stderr
             )
-        elif OPENCLAW_GATEWAY_RESTART_ON_AGENT_REWRITE:
-            _restart_gateway_after_agent_rewrite()
+        else:
+            rewritten = _sync_agent_tokenpilot_models(agent_id)
+            if OPENCLAW_GATEWAY_RESTART_ON_AGENT_REWRITE:
+                _restart_gateway_after_agent_rewrite()
+            elif rewritten:
+                logger.info("Updated agent-local tokenpilot route without gateway restart")
         if OPENCLAW_AGENT_CONFIG_SETTLE_S > 0:
             logger.info(
                 "Waiting %.1fs for OpenClaw gateway to settle after agent config rewrite",
@@ -787,6 +838,8 @@ def _canonical_state_to_transcript(messages: List[Dict[str, Any]]) -> List[Dict[
 
 
 def _load_canonical_transcript_fallback(started_at: float) -> List[Dict[str, Any]]:
+    if DISABLE_CANONICAL_STATE_FALLBACK:
+        return []
     canonical_path = _find_recent_canonical_state_path(started_at)
     if canonical_path is None:
         return []

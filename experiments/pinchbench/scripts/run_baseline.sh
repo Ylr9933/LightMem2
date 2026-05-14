@@ -37,6 +37,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 import_runtime_envs
+PINCHBENCH_TMP_ROOT="${PINCHBENCH_TMP_ROOT:-/tmp/pinchbench_baseline}"
+export PINCHBENCH_TMP_ROOT
+mkdir -p "${PINCHBENCH_TMP_ROOT}"
 MODEL_LIKE="${MODEL:-${TOKENPILOT_BASELINE_MODEL:-${BASELINE_MODEL:-gpt-5.4-mini}}}"
 JUDGE_LIKE="${JUDGE:-${TOKENPILOT_BASELINE_JUDGE:-${BASELINE_JUDGE:-gpt-5.4-mini}}}"
 apply_model_runtime_env "${MODEL_LIKE}"
@@ -109,6 +112,7 @@ elevated_allow_from = sys.argv[11].strip()
 obj = json.loads(config_path.read_text(encoding="utf-8"))
 
 plugins = obj.setdefault("plugins", {})
+plugins["enabled"] = False
 load_cfg = plugins.setdefault("load", {})
 entries = plugins.setdefault("entries", {})
 allow = plugins.get("allow")
@@ -118,38 +122,34 @@ load_paths = load_cfg.get("paths")
 if not isinstance(load_paths, list):
     load_paths = []
 entries.pop("ecoclaw", None)
+entries.pop("tokenpilot", None)
+installs = plugins.get("installs")
+if isinstance(installs, dict):
+    installs.pop("ecoclaw", None)
+    installs.pop("tokenpilot", None)
+    if not installs:
+        plugins.pop("installs", None)
 slots = plugins.setdefault("slots", {})
-eco = entries.setdefault("tokenpilot", {})
-eco["enabled"] = False
 slots["contextEngine"] = "legacy"
-tokenpilot_cfg = eco.setdefault("config", {})
-hooks = tokenpilot_cfg.setdefault("hooks", {})
-hooks["beforeToolCall"] = False
-hooks["toolResultPersist"] = False
-context_engine = tokenpilot_cfg.setdefault("contextEngine", {})
-context_engine["enabled"] = False
-modules = tokenpilot_cfg.setdefault("modules", {})
-modules["stabilizer"] = False
-modules["policy"] = False
-modules["reduction"] = False
-modules["eviction"] = False
-reduction_cfg = tokenpilot_cfg.setdefault("reduction", {})
-passes = reduction_cfg.setdefault("passes", {})
-for key in list(passes.keys()):
-    passes[key] = False
-for key in (
-    "repeatedReadDedup",
-    "toolPayloadTrim",
-    "htmlSlimming",
-    "execOutputTruncation",
-    "agentsStartupOptimization",
-    "memoryFaultRecovery",
-):
-    passes[key] = False
-tokenpilot_cfg.setdefault("eviction", {})["enabled"] = False
-tokenpilot_cfg.setdefault("taskStateEstimator", {})["enabled"] = False
-plugins["allow"] = ["tokenpilot"]
-load_cfg["paths"] = [str(Path.home() / ".openclaw" / "extensions" / "tokenpilot")]
+plugins["allow"] = []
+if "paths" in load_cfg:
+    filtered_paths = []
+    for item in load_cfg.get("paths") or []:
+        if not isinstance(item, str):
+            continue
+        lowered = item.lower()
+        if "/extensions/tokenpilot" in lowered or "/extensions/ecoclaw" in lowered:
+            continue
+        filtered_paths.append(item)
+    if filtered_paths:
+        load_cfg["paths"] = filtered_paths
+    else:
+        load_cfg.pop("paths", None)
+if not load_cfg:
+    plugins.pop("load", None)
+if not entries:
+    plugins.pop("entries", None)
+plugins.pop("load", None)
 
 tools = obj.setdefault("tools", {})
 exec_cfg = tools.setdefault("exec", {})

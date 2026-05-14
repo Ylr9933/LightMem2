@@ -31,18 +31,62 @@ export function isPositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function normalizeWebSearchDateFilters(target: Record<string, unknown>): Record<string, unknown> {
+  const freshness = typeof target.freshness === "string" ? target.freshness.trim() : "";
+  const dateAfter = typeof target.date_after === "string" ? target.date_after.trim() : "";
+  const dateBefore = typeof target.date_before === "string" ? target.date_before.trim() : "";
+  if (!freshness || (!dateAfter && !dateBefore)) {
+    return target;
+  }
+  return {
+    ...target,
+    freshness: "",
+  };
+}
+
 export function applyBeforeToolCallDefaults(event: any): Record<string, unknown> {
-  const toolName = String(event?.toolName ?? event?.tool_name ?? "").trim().toLowerCase();
+  const toolName = String(
+    event?.toolName
+    ?? event?.tool_name
+    ?? event?.name
+    ?? event?.params?.toolName
+    ?? event?.params?.tool_name
+    ?? event?.params?.name
+    ?? "",
+  ).trim().toLowerCase();
   const params = event?.params && typeof event.params === "object"
     ? { ...(event.params as Record<string, unknown>) }
     : {};
+  const args =
+    params.args && typeof params.args === "object"
+      ? { ...(params.args as Record<string, unknown>) }
+      : null;
+  const argumentsObject =
+    params.arguments && typeof params.arguments === "object"
+      ? { ...(params.arguments as Record<string, unknown>) }
+      : null;
+
   if (toolName === "read") {
-    if (!isPositiveNumber(params.limit)) params.limit = 200;
-    if (!isPositiveNumber(params.offset)) params.offset = 1;
+    const readTarget = args ?? argumentsObject ?? params;
+    if (!isPositiveNumber(readTarget.limit)) readTarget.limit = 200;
+    if (!isPositiveNumber(readTarget.offset)) readTarget.offset = 1;
+    if (args) params.args = readTarget;
+    if (argumentsObject) params.arguments = readTarget;
     return params;
   }
   if (toolName === "web_fetch") {
-    if (!isPositiveNumber(params.maxChars)) params.maxChars = 12_000;
+    const fetchTarget = args ?? argumentsObject ?? params;
+    if (!isPositiveNumber(fetchTarget.maxChars)) fetchTarget.maxChars = 12_000;
+    if (args) params.args = fetchTarget;
+    if (argumentsObject) params.arguments = fetchTarget;
+    return params;
+  }
+  if (toolName === "web_search") {
+    const searchTarget = args ?? argumentsObject ?? params;
+    const normalized = normalizeWebSearchDateFilters(searchTarget);
+    if (args) params.args = normalized;
+    if (argumentsObject) params.arguments = normalized;
+    if (!args && !argumentsObject) return normalized;
   }
   return params;
 }

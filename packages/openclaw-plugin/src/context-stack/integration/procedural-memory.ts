@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { prependTextToContent } from "../request-preprocessing/root-prompt-stabilizer.js";
-import { formatProceduralMemoryInjection, createLocalProceduralMemoryBackend, createPromptingDistiller, runProceduralMemoryBatch } from "@tokenpilot/memory";
+import { formatProceduralMemoryInjection, createLocalProceduralMemoryBackend, createPromptingDistiller, loadSkills, runProceduralMemoryBatch } from "@tokenpilot/memory";
 import { loadSessionTaskRegistry } from "@tokenpilot/history";
 import { hashText, pluginStateSubdirCandidates } from "@tokenpilot/runtime-core";
 
@@ -400,6 +400,7 @@ export async function injectProceduralMemoryHints(params: {
     embeddingProvider: embeddingProviderFromConfig(params.cfg),
     distillProvider: distillProviderFromConfig(params.cfg),
   });
+  const visibleSkills = await loadSkills(params.cfg.stateDir, params.sessionId);
   const hits = await backend.retrieve({
     sessionId: params.sessionId,
     objective,
@@ -415,6 +416,9 @@ export async function injectProceduralMemoryHints(params: {
     objective,
     hitCount: hits.length,
     skillIds: hits.map((hit) => hit.skill.skillId),
+    visibleSkillCount: visibleSkills.length,
+    visibleSkillIds: visibleSkills.slice(0, 5).map((skill) => skill.skillId),
+    stateDir: params.cfg.stateDir,
   });
   if (hits.length === 0) return { injected: false, hitCount: 0 };
 

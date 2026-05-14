@@ -192,16 +192,13 @@ export function applyRootPromptRewriteToChatMessages(messages: any[]): {
   nextMessages[systemIndex] = {
     ...(systemItem ?? nextMessages[systemIndex]),
     role: "system",
-    content: replaceContentText((systemItem ?? nextMessages[systemIndex])?.content, rewrite.forwardedPromptText),
+    content: replaceContentText(
+      (systemItem ?? nextMessages[systemIndex])?.content,
+      rewrite.dynamicContextText
+        ? `${rewrite.forwardedPromptText}\n\n${rewrite.dynamicContextText}`
+        : rewrite.forwardedPromptText,
+    ),
   };
-  if (rewrite.dynamicContextText && userIndex >= 0) {
-    const userItem = nextMessages[userIndex];
-    nextMessages[userIndex] = {
-      ...(userItem ?? {}),
-      role: "user",
-      content: prependTextToContent(userItem?.content, rewrite.dynamicContextText),
-    };
-  }
   return {
     messages: nextMessages,
     rewrite,

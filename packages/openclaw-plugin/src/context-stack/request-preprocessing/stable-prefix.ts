@@ -165,7 +165,13 @@ function replaceContentWithText(content: any, nextText: string): any {
   return nextText;
 }
 
-export function rewritePayloadForStablePrefix(payload: any, model: string): {
+export function rewritePayloadForStablePrefix(
+  payload: any,
+  model: string,
+  options?: {
+    dynamicContextTarget?: "developer" | "user";
+  },
+): {
   promptCacheKey: string;
   userContentRewrites: number;
   senderMetadataBlocksBefore: number;
@@ -176,6 +182,7 @@ export function rewritePayloadForStablePrefix(payload: any, model: string): {
   let senderMetadataBlocksBefore = 0;
   let senderMetadataBlocksAfter = 0;
   let dynamicContextText = "";
+  const dynamicContextTarget = options?.dynamicContextTarget === "user" ? "user" : "developer";
   if (Array.isArray(payload?.input)) {
     payload.input = payload.input.map((item: any) => {
       if (!item || typeof item !== "object") return item;
@@ -220,17 +227,34 @@ export function rewritePayloadForStablePrefix(payload: any, model: string): {
     });
 
     if (dynamicContextText) {
-      const userIndex = payload.input.findIndex((item: any) => item && typeof item === "object" && String(item.role) === "user");
-      if (userIndex >= 0) {
-        const userItem = payload.input[userIndex];
-        const currentText = extractInputText([userItem]);
-        if (!currentText.includes(dynamicContextText)) {
-          payload.input[userIndex] = {
-            ...userItem,
-            role: "user",
-            content: prependTextToContent(userItem?.content, dynamicContextText),
-          };
-          userContentRewrites += 1;
+      if (dynamicContextTarget === "user") {
+        const userIndex = payload.input.findIndex((item: any) => item && typeof item === "object" && String(item.role) === "user");
+        if (userIndex >= 0) {
+          const userItem = payload.input[userIndex];
+          const currentText = extractInputText([userItem]);
+          if (!currentText.includes(dynamicContextText)) {
+            payload.input[userIndex] = {
+              ...userItem,
+              role: "user",
+              content: prependTextToContent(userItem?.content, dynamicContextText),
+            };
+            userContentRewrites += 1;
+          }
+        }
+      } else {
+        const developerIndex = payload.input.findIndex((item: any) => item && typeof item === "object" && String(item.role) === "developer");
+        if (developerIndex >= 0) {
+          const developerItem = payload.input[developerIndex];
+          const currentText = extractInputText([developerItem]);
+          if (!currentText.includes(dynamicContextText)) {
+            const mergedText = `${normalizeText(currentText)}\n\n${normalizeText(dynamicContextText)}`;
+            payload.input[developerIndex] = {
+              ...developerItem,
+              role: "developer",
+              content: mergedText,
+            };
+            userContentRewrites += 1;
+          }
         }
       }
     }

@@ -50,7 +50,8 @@ export async function startEmbeddedResponsesProxy(
   }
 
   const policyModule = helpers.createPolicyModule(helpers.buildPolicyModuleConfigFromPluginConfig(cfg));
-  const reductionPassOptions = cfg.reduction.passOptions ?? {};
+      const reductionPassOptions = cfg.reduction.passOptions ?? {};
+      const dynamicContextTarget = cfg.hooks.dynamicContextTarget === "user" ? "user" : "developer";
 
   const server = createServer(async (req, res) => {
     try {
@@ -93,12 +94,16 @@ export async function startEmbeddedResponsesProxy(
         ? String(payload.prompt_cache_key)
         : "";
       if (!proxyPureForward && devAndUser && rootPromptRewrite && Array.isArray(payload?.input) && devAndUser.developerIndex >= 0) {
+        const forwardedDeveloperText =
+          dynamicContextTarget === "developer" && rootPromptRewrite.dynamicContextText
+            ? `${helpers.normalizeText(rootPromptRewrite.forwardedPromptText)}\n\n${helpers.normalizeText(rootPromptRewrite.dynamicContextText)}`
+            : rootPromptRewrite.forwardedPromptText;
         payload.input[devAndUser.developerIndex] = {
           ...(devAndUser.developerItem ?? payload.input[devAndUser.developerIndex]),
           role: "developer",
-          content: rootPromptRewrite.forwardedPromptText,
+          content: forwardedDeveloperText,
         };
-        if (rootPromptRewrite.dynamicContextText && devAndUser.userIndex >= 0) {
+        if (dynamicContextTarget === "user" && rootPromptRewrite.dynamicContextText && devAndUser.userIndex >= 0) {
           payload.input[devAndUser.userIndex] = {
             ...(devAndUser.userItem ?? payload.input[devAndUser.userIndex]),
             role: "user",
@@ -110,7 +115,7 @@ export async function startEmbeddedResponsesProxy(
         }
       }
       const stableRewrite = !proxyPureForward
-        ? helpers.rewritePayloadForStablePrefix(payload, model)
+        ? helpers.rewritePayloadForStablePrefix(payload, model, { dynamicContextTarget })
         : {
           promptCacheKey: typeof payload?.prompt_cache_key === "string" && payload.prompt_cache_key.trim().length > 0
             ? String(payload.prompt_cache_key)
