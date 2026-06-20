@@ -262,7 +262,7 @@ LightMem2/
 
 ## 🧪 Experiments
 
-LightMem2 keeps benchmark adapters, datasets, and runner scripts under:
+LightMem2 keeps benchmark adapters, task definitions, and runner scripts under:
 
 ```text
 experiments/
@@ -286,8 +286,9 @@ Recommended reproduction flow:
 1. Finish the installation steps in this root README and verify the plugin in a real OpenClaw session.
 2. Open [experiments/README.md](./experiments/README.md) and choose the benchmark you want to reproduce.
 3. Open [experiments/tokenpilot/README.md](./experiments/tokenpilot/README.md) for the current component-level benchmark index.
-4. Follow the benchmark-specific README for dataset assets, environment setup, and official runner commands.
-5. Run the benchmark from its `scripts/run_baseline.sh` or `scripts/run_method.sh` entrypoint.
+4. Download the required benchmark data bundle from the shared Google Drive described in [experiments/README.md](./experiments/README.md).
+5. Follow the benchmark-specific README for local asset placement, environment setup, and official runner commands.
+6. Run the benchmark from its `scripts/run_baseline.sh` or `scripts/run_method.sh` entrypoint.
 
 <span id='examples'/>
 

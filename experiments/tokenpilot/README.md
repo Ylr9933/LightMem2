@@ -31,4 +31,7 @@ The current public experiment surface includes:
 ## Notes
 
 - This directory is a landing page, not a duplicate of the benchmark manuals.
+- Large benchmark datasets and experiment outputs are stored outside Git.
+- Use [experiments/README.md](../README.md) for the shared Google Drive layout
+  and external storage policy.
 - Exact benchmark scripts, assets, and caveats stay inside each benchmark subtree.

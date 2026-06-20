@@ -21,6 +21,14 @@ nohup.out
 experiments/tokenpilot/claw-eval/save/
 experiments/tokenpilot/claw-eval/dataset/general/*
 !experiments/tokenpilot/claw-eval/dataset/general/README.md
+experiments/tokenpilot/claw-eval/dataset/tasks/**/fixtures/**
+experiments/tokenpilot/claw-eval/dataset/tasks/**/output.html
+
+experiments/tokenpilot/pinchbench/dataset/assets/*
+!experiments/tokenpilot/pinchbench/dataset/assets/README.md
+experiments/tokenpilot/pinchbench/run/*.log
+experiments/tokenpilot/pinchbench/dataset/benchmark.log
+experiments/tokenpilot/pinchbench/scripts/distill.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -32,17 +32,42 @@ Required environment pieces:
 3. provider API keys / model routes configured in `openclaw.json`
 4. the flattened `general` asset bundle copied into `dataset/general/`
 
-## General asset bundle
+## External data layout
 
-The large `general` bundle is intentionally not committed.
+Large Claw-Eval assets are stored outside Git.
 
-Expected location:
+Google Drive root:
+
+- <https://drive.google.com/drive/u/0/folders/1AeMW693aMhyBKscUDbaxnrXfvE8aSBXg>
+
+Recommended Drive layout for this benchmark:
+
+```text
+LightMem2/
+└── TokenPilot/
+    ├── experiment-data/
+    │   └── claw-eval/
+    │       ├── general-bundle/
+    │       └── task-fixtures/
+    └── experiment-results/
+        └── claw-eval/
+```
+
+Local mount points in this repository:
 
 - `experiments/tokenpilot/claw-eval/dataset/general/`
+- `experiments/tokenpilot/claw-eval/dataset/tasks/*/fixtures/`
 
 See:
 
 - [dataset/general/README.md](dataset/general/README.md)
+
+When you prepare a fresh machine:
+
+1. download `general-bundle/` from Drive
+2. copy its contents into `dataset/general/`
+3. download `task-fixtures/` from Drive
+4. copy each task fixture directory back under `dataset/tasks/*/fixtures/`
 
 ## Official runners
 
@@ -141,6 +166,7 @@ What is still operationally sensitive:
 - provider stability / request timeouts
 - duplicate plugin ids from previously installed local extensions
 - plugin continuous experiments with the current TokenPilot component reduction/eviction/estimator enabled
+- large fixture synchronization between local working copies and the shared Drive mirror
 
 ## Known pitfalls
 

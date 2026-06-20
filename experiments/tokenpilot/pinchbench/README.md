@@ -40,12 +40,45 @@ The migration is now in an intermediate state:
 - `dataset/`
   - current home for:
     - `tasks/`
-    - `assets/`
+    - `assets/` (downloaded locally from shared external storage)
     - `scripts/`
 - `scripts/`
   - current home for the official baseline/method runners and shared helpers
-- `save/`
-  - reserved for local run outputs; only directory skeletons should be committed
+- `run/`
+  - local runner helpers; large logs/results should not be committed
+
+## External data and result storage
+
+Large PinchBench assets and produced result bundles are stored outside Git.
+
+Google Drive root:
+
+- <https://drive.google.com/drive/u/0/folders/1AeMW693aMhyBKscUDbaxnrXfvE8aSBXg>
+
+Recommended Drive layout for this benchmark:
+
+```text
+LightMem2/
+└── TokenPilot/
+    ├── experiment-data/
+    │   └── pinchbench/
+    │       └── dataset-assets/
+    └── experiment-results/
+        └── pinchbench/
+            ├── isolated/
+            └── continuous/
+```
+
+Local mount point for the input asset bundle:
+
+- `experiments/tokenpilot/pinchbench/dataset/assets/`
+
+Before running a fresh machine:
+
+1. download `dataset-assets/` from Drive
+2. copy the files into `dataset/assets/`
+3. run the official baseline or method command
+4. upload large result folders/logs to `experiment-results/pinchbench/`
 
 ## Official runners
 
