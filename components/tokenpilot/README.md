@@ -46,6 +46,10 @@ In the current public repo:
 - `adapters/openclaw/`
   - the current production host adapter for OpenClaw
 
+Adapter development notes live in:
+
+- [adapters/README.md](./adapters/README.md)
+
 This is the intended reuse boundary for future hosts such as Codex CLI or Claude Code.
 
 ## Component Layout
@@ -57,6 +61,7 @@ components/tokenpilot/
 ├── README.md
 └── packages/
     ├── host-adapter/     # Shared host contracts and host-specific path/state interfaces
+    ├── product-surface/  # Shared user-facing command actions and product semantics
     ├── runtime-core/     # Host-agnostic runtime engine and reduction pipeline
     ├── kernel/           # Shared contracts, events, and runtime-facing types
     └── layers/
@@ -72,6 +77,7 @@ adapters, rather than as a permanently OpenClaw-only implementation.
 
 Current host integration index:
 
+- [adapters/README.md](./adapters/README.md)
 - [HOSTS.md](./HOSTS.md)
 
 Current implementation status:
@@ -326,5 +332,6 @@ Current OpenClaw adapter self-check:
 
 More package-level adapter notes live in:
 
+- [adapters/README.md](./adapters/README.md)
 - [adapters/openclaw/README.md](./adapters/openclaw/README.md)
 - [../../experiments/tokenpilot/README.md](../../experiments/tokenpilot/README.md)

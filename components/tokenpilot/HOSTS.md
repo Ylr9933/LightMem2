@@ -34,6 +34,10 @@ In directory form, that means:
 - `components/tokenpilot/adapters/<host>`
   - host-specific integration layer
 
+General adapter development guidance lives in:
+
+- [adapters/README.md](./adapters/README.md)
+
 At the moment, OpenClaw is the only fully implemented adapter. Some OpenClaw
 assumptions are still being pushed out of shared packages and into the adapter
 boundary.

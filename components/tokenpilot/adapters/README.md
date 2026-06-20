@@ -1,0 +1,116 @@
+# TokenPilot Adapters
+
+This directory contains host-specific integration layers for the TokenPilot
+component.
+
+Shared runtime logic belongs under `components/tokenpilot/packages/`.
+Anything that depends on one concrete host should stay under
+`components/tokenpilot/adapters/<host>/`.
+
+## Current Status
+
+Current adapter inventory:
+
+- `openclaw/`
+  - production adapter
+- future adapters
+  - `codex`
+  - `claude-code`
+  - other host-specific integrations
+
+## What Belongs In An Adapter
+
+Keep these responsibilities inside the adapter layer:
+
+- host install and uninstall flow
+- host config mutation
+- request / response hook wiring
+- session and transcript bridging
+- host-specific command registration
+- runtime bootstrap and doctor checks
+- host-owned path resolution
+
+Keep these responsibilities in shared packages:
+
+- runtime contracts in `packages/kernel/`
+- host-neutral execution primitives in `packages/runtime-core/`
+- state and policy logic in `packages/layers/*`
+- host abstraction helpers in `packages/host-adapter/`
+- shared command semantics in `packages/product-surface/`
+
+## Recommended Adapter Shape
+
+```text
+adapters/
+└── <host>/
+    ├── README.md
+    ├── package.json
+    ├── src/
+    │   ├── commands/        # host command binding
+    │   ├── integration/     # host lifecycle and hook wiring
+    │   ├── state/           # host path and runtime state helpers
+    │   └── index.ts
+    ├── scripts/             # install / doctor / packaging helpers
+    └── tests/
+```
+
+The exact subtree can vary by host, but the split should stay readable:
+
+- `src/`
+  - runtime integration code
+- `scripts/`
+  - operator-facing tooling
+- `tests/`
+  - adapter-level checks
+
+## New Adapter Checklist
+
+When adding a new host adapter, cover these surfaces explicitly:
+
+1. Install surface
+   - where the host extension or plugin lives
+   - how configuration is written
+   - how to enable, disable, and remove it
+2. Session bridge
+   - how session ids, turn ids, and workspace roots are resolved
+3. Transcript bridge
+   - how raw host messages are decoded into shared envelopes
+   - how rewritten envelopes are encoded back into the host request format
+4. Request / response lifecycle
+   - before-call rewriting
+   - after-call reduction
+   - tool-result persistence
+   - streaming and non-streaming handling
+5. State roots
+   - state dir
+   - archive dir
+   - debug trace dir
+6. Product surface
+   - `status`
+   - `report`
+   - `doctor`
+   - `visual`
+   - mode switching
+7. Verification
+   - adapter unit tests
+   - one smoke install path
+   - one end-to-end session check
+
+## Recommended Development Order
+
+Use this order when bringing up a new adapter:
+
+1. start with the shared host envelope bridge in `packages/host-adapter/`
+2. wire one minimal request path through the host
+3. make `status` and `doctor` work first
+4. add reduction and persistence hooks
+5. add visual and richer command surfaces last
+
+This keeps the first working version small and makes boundary mistakes easier to
+spot.
+
+## Related Docs
+
+- [../README.md](../README.md)
+- [../HOSTS.md](../HOSTS.md)
+- [openclaw/README.md](./openclaw/README.md)
