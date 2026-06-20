@@ -21,17 +21,16 @@ Google Drive root:
 Recommended Drive path:
 
 ```text
-LightMem2/TokenPilot/experiment-data/claw-eval/task-fixtures/
+LightMem2/TokenPilot/experiment-data/claw-eval/tasks/
 ```
 
 ## Expected restore layout
 
-After download, each task should restore its local fixture tree under:
+After download, restore the full task tree under:
 
 ```text
-experiments/tokenpilot/claw-eval/dataset/tasks/<task-id>/fixtures/
+experiments/tokenpilot/claw-eval/dataset/tasks/
 ```
 
-If a task ships a committed `task.yaml` and `grader.py` but no local `fixtures/`
-directory, download the matching fixture subtree from Drive before running the
-benchmark.
+Uploading the whole `tasks/` directory is recommended in practice. It avoids
+manual per-task fixture selection and makes fresh-machine restore simpler.

@@ -48,7 +48,7 @@ LightMem2/
     ├── experiment-data/
     │   └── claw-eval/
     │       ├── general-bundle/
-    │       └── task-fixtures/
+    │       └── tasks/
     └── experiment-results/
         └── claw-eval/
 ```
@@ -56,7 +56,7 @@ LightMem2/
 Local mount points in this repository:
 
 - `experiments/tokenpilot/claw-eval/dataset/general/`
-- `experiments/tokenpilot/claw-eval/dataset/tasks/*/fixtures/`
+- `experiments/tokenpilot/claw-eval/dataset/tasks/`
 
 See:
 
@@ -66,8 +66,8 @@ When you prepare a fresh machine:
 
 1. download `general-bundle/` from Drive
 2. copy its contents into `dataset/general/`
-3. download `task-fixtures/` from Drive
-4. copy each task fixture directory back under `dataset/tasks/*/fixtures/`
+3. download `tasks/` from Drive
+4. copy it back under `dataset/tasks/`
 
 ## Official runners
 
