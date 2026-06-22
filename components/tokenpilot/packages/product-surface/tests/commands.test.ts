@@ -218,7 +218,7 @@ test("createProductSurfaceCommandHandler applies reduction mode presets", async 
   assert.equal(lightResult.text, "✅ Observation Reduction preset = light");
   assert.equal(reduction.triggerMinChars, 4000);
   assert.equal(reduction.maxToolChars, 1800);
-  assert.equal(passes.repeatedReadDedup, true);
+  assert.equal(passes.readStateCompaction, true);
   assert.equal(passes.toolPayloadTrim, true);
   assert.equal(passes.htmlSlimming, false);
   assert.equal(passes.execOutputTruncation, false);

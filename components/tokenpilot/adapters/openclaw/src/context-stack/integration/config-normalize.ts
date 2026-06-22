@@ -202,7 +202,7 @@ function normalizeMethodConfig(raw: TokenPilotMethodConfig): NormalizedTokenPilo
       triggerMinChars: Math.max(256, reduction.triggerMinChars ?? 2200),
       maxToolChars: Math.max(256, reduction.maxToolChars ?? 1200),
       passes: {
-        repeatedReadDedup: reductionPasses.repeatedReadDedup ?? true,
+        readStateCompaction: reductionPasses.readStateCompaction ?? true,
         toolPayloadTrim: reductionPasses.toolPayloadTrim ?? true,
         htmlSlimming: reductionPasses.htmlSlimming ?? true,
         execOutputTruncation: reductionPasses.execOutputTruncation ?? true,
@@ -214,7 +214,7 @@ function normalizeMethodConfig(raw: TokenPilotMethodConfig): NormalizedTokenPilo
         lineNumberStrip: reductionPasses.lineNumberStrip ?? true,
       },
       passOptions: {
-        repeatedReadDedup: reductionPassOptions.repeatedReadDedup && typeof reductionPassOptions.repeatedReadDedup === "object" ? { ...reductionPassOptions.repeatedReadDedup } : {},
+        readStateCompaction: reductionPassOptions.readStateCompaction && typeof reductionPassOptions.readStateCompaction === "object" ? { ...reductionPassOptions.readStateCompaction } : {},
         toolPayloadTrim: reductionPassOptions.toolPayloadTrim && typeof reductionPassOptions.toolPayloadTrim === "object" ? { ...reductionPassOptions.toolPayloadTrim } : {},
         htmlSlimming: reductionPassOptions.htmlSlimming && typeof reductionPassOptions.htmlSlimming === "object" ? { ...reductionPassOptions.htmlSlimming } : {},
         execOutputTruncation: reductionPassOptions.execOutputTruncation && typeof reductionPassOptions.execOutputTruncation === "object" ? { ...reductionPassOptions.execOutputTruncation } : {},

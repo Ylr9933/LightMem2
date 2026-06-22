@@ -80,7 +80,7 @@ export type TokenPilotMethodConfig = {
     triggerMinChars?: number;
     maxToolChars?: number;
     passes?: {
-      repeatedReadDedup?: boolean;
+      readStateCompaction?: boolean;
       toolPayloadTrim?: boolean;
       htmlSlimming?: boolean;
       execOutputTruncation?: boolean;

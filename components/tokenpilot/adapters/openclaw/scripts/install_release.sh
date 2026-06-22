@@ -72,12 +72,11 @@ MODE_PRESETS = {
         "eviction": False,
         "taskStateEstimator": False,
         "passes": {
-            "repeatedReadDedup": True,
+            "readStateCompaction": True,
             "toolPayloadTrim": True,
             "htmlSlimming": False,
             "execOutputTruncation": False,
             "agentsStartupOptimization": True,
-            "memoryFaultRecovery": False,
         },
         "passOptions": {
             "formatSlimming": False,
@@ -93,12 +92,11 @@ MODE_PRESETS = {
         "eviction": False,
         "taskStateEstimator": False,
         "passes": {
-            "repeatedReadDedup": True,
+            "readStateCompaction": True,
             "toolPayloadTrim": True,
             "htmlSlimming": True,
             "execOutputTruncation": True,
             "agentsStartupOptimization": True,
-            "memoryFaultRecovery": False,
         },
         "passOptions": {
             "formatSlimming": True,
@@ -114,12 +112,11 @@ MODE_PRESETS = {
         "eviction": True,
         "taskStateEstimator": True,
         "passes": {
-            "repeatedReadDedup": True,
+            "readStateCompaction": True,
             "toolPayloadTrim": True,
             "htmlSlimming": True,
             "execOutputTruncation": True,
             "agentsStartupOptimization": True,
-            "memoryFaultRecovery": False,
         },
         "passOptions": {
             "formatSlimming": True,
@@ -274,12 +271,11 @@ if post_install:
     if not isinstance(passes, dict):
         passes = {}
     reduction_cfg["passes"] = {
-        "repeatedReadDedup": bool(passes.get("repeatedReadDedup", mode_preset["passes"]["repeatedReadDedup"])),
+        "readStateCompaction": bool(passes.get("readStateCompaction", mode_preset["passes"]["readStateCompaction"])),
         "toolPayloadTrim": bool(passes.get("toolPayloadTrim", mode_preset["passes"]["toolPayloadTrim"])),
         "htmlSlimming": bool(passes.get("htmlSlimming", mode_preset["passes"]["htmlSlimming"])),
         "execOutputTruncation": bool(passes.get("execOutputTruncation", mode_preset["passes"]["execOutputTruncation"])),
         "agentsStartupOptimization": bool(passes.get("agentsStartupOptimization", mode_preset["passes"]["agentsStartupOptimization"])),
-        "memoryFaultRecovery": bool(passes.get("memoryFaultRecovery", mode_preset["passes"]["memoryFaultRecovery"])),
     }
 
     pass_options = reduction_cfg.get("passOptions")

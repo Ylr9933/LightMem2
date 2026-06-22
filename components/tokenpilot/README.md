@@ -210,12 +210,11 @@ Minimal shape:
 | `reduction.engine` | `string` | `layered` | Reduction engine. Current public value is `layered`. |
 | `reduction.triggerMinChars` | `number` | `2200` | Minimum chars before reduction candidate generation is triggered. |
 | `reduction.maxToolChars` | `number` | `1200` | Target maximum chars for trimmed tool payloads. |
-| `reduction.passes.repeatedReadDedup` | `boolean` | `true` | Deduplicate repeated reads. |
+| `reduction.passes.readStateCompaction` | `boolean` | `true` | Compact stale or superseded read results before they bloat later context. |
 | `reduction.passes.toolPayloadTrim` | `boolean` | `true` | Trim oversized tool payloads. |
 | `reduction.passes.htmlSlimming` | `boolean` | `true` | Compact noisy HTML content. |
 | `reduction.passes.execOutputTruncation` | `boolean` | `true` | Truncate long execution outputs. |
 | `reduction.passes.agentsStartupOptimization` | `boolean` | `true` | Apply agent startup optimization pass. |
-| `reduction.passes.memoryFaultRecovery` | `boolean` | `false` | Enable recovery-aware reduction fallback behavior. |
 | `eviction.enabled` | `boolean` | `false` | Enable task-level canonical history eviction. |
 | `taskStateEstimator.enabled` | `boolean` | `false` | Enable the estimator used by lifecycle-aware eviction. |
 | `taskStateEstimator.baseUrl` | `string` | inherited from upstream when unset | OpenAI-compatible base URL for the estimator model. |
