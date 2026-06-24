@@ -5,6 +5,7 @@ import {
   readCliContextState,
   updateCliContextState,
 } from "./context-store.js";
+import { createCodexCliBridge } from "./hosts/codex.js";
 import { createOpenClawCliBridge } from "./hosts/openclaw.js";
 import { formatCliUsage } from "./usage.js";
 
@@ -110,9 +111,21 @@ export async function dispatchCli(argv: string[]): Promise<TokenPilotProductComm
   }
 
   if (target.host === "codex") {
-    return {
-      text: "Codex CLI bridge is not implemented yet.",
-    };
+    const { handleCommand, maybeResolveLatestSessionId } = createCodexCliBridge({
+      host: "codex",
+      sessionId: target.sessionId,
+    });
+    const result = await handleCommand({
+      args: commandArgs.join(" "),
+      sessionId: target.sessionId,
+    });
+
+    const resolvedSessionId = target.sessionId ?? await maybeResolveLatestSessionId();
+    await updateCliContextState({
+      host: target.host,
+      sessionId: resolvedSessionId,
+    });
+    return result;
   }
 
   const { bridge, configAdapter, maybeResolveLatestSessionId } = createOpenClawCliBridge({

@@ -31,3 +31,33 @@ test("dispatch supports context inspection and use host flow", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("dispatch routes codex host commands through the shared CLI bridge", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-cli-codex-"));
+  const originalHome = process.env.HOME;
+  process.env.HOME = dir;
+  try {
+    const codexHome = join(dir, ".codex");
+    await rm(codexHome, { recursive: true, force: true });
+
+    const status = await dispatchCli(["codex", "status"]);
+    assert.match(status.text, /TokenPilot Codex status:/);
+    assert.doesNotMatch(status.text, /lifecycle eviction/i);
+
+    const useHost = await dispatchCli(["use", "codex"]);
+    assert.equal(useHost.text, "Default host = codex");
+
+    const reduction = await dispatchCli(["codex", "reduction", "off"]);
+    assert.equal(reduction.text, "✅ Observation Reduction disabled");
+
+    const unsupported = await dispatchCli(["codex", "settings", "details", "on"]);
+    assert.equal(unsupported.text, "Codex does not expose shared runtime settings yet.");
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
