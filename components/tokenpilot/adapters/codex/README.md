@@ -21,6 +21,8 @@ Implemented today:
 - local Responses proxy lifecycle
 - stable-prefix rewriting
 - request-time reduction
+- lightweight session-state tracking from proxy + hooks
+- text-mode Codex session visual via `lightmem2 codex visual`
 - standalone `lightmem2 codex ...` command surface
 
 Not fully matched with OpenClaw yet:
@@ -106,7 +108,6 @@ lightmem2 codex reduction on
 lightmem2 codex reduction off
 lightmem2 codex reduction mode light
 lightmem2 codex reduction mode balanced
-lightmem2 codex reduction mode aggressive
 lightmem2 codex reduction pass toolPayloadTrim off
 ```
 
@@ -125,6 +126,24 @@ Unsupported today:
 - `lightmem2 codex mode aggressive`
 - `lightmem2 codex stabilizer hook ...`
 
+## Report And Visual
+
+`lightmem2 codex report` and `lightmem2 codex visual` intentionally serve different purposes:
+
+- `report`: savings-oriented summary from `ux-effects`
+- `visual`: text-mode session topology and recent-turn view from Codex proxy + hook traces
+
+Current `visual` output includes:
+
+- latest resolved session id
+- latest / previous response ids when available
+- recent response chain
+- workspace hint
+- last observed hook and tool
+- recent turn request / response / assistant char counts
+
+This is a lightweight observability layer for Codex. It is not yet the same browser visual surface used by the OpenClaw adapter.
+
 ## Runtime Files
 
 The current adapter writes state under:
@@ -137,6 +156,10 @@ Useful files:
 
 - `tokenpilot-codex.pid`
 - `tokenpilot-codex.log`
+- `event-trace.jsonl`
+- `session-state/latest.json`
+- `session-state/sessions/<session>.json`
+- `session-state/bindings/<session>.jsonl`
 - `ux-effects/latest.json`
 - `ux-effects/sessions/<session>.json`
 
