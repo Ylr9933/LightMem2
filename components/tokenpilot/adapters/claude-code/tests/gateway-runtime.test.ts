@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -95,6 +95,101 @@ test("gateway runtime serves health and forwards Claude Messages requests", asyn
     assert.equal(payload.id, "msg_test_1");
     assert.equal((seenPayloads as Record<string, unknown>[]).length, 1);
     assert.equal(((seenPayloads[0] as Record<string, unknown>).model), "claude-sonnet-4-6");
+  } finally {
+    await runtime.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("gateway runtime records session-state and ux-effects after a reduced request", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-gateway-state-"));
+  const proxyPort = await reserveUnusedPort();
+  const longToolPayload = `payload\n${"line\n".repeat(800)}`;
+  const forwarder: HostGatewayForwarder = {
+    async request() {
+      return {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+        text: JSON.stringify({
+          id: "msg_state_1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          usage: { input_tokens: 20, output_tokens: 5 },
+          stop_reason: "end_turn",
+        }),
+      };
+    },
+    async requestStream() {
+      throw new Error("stream path should not be used in this test");
+    },
+  };
+
+  const runtime = await startClaudeCodeGatewayRuntime({
+    config: normalizeTokenPilotClaudeCodeConfig({
+      stateDir: join(dir, "state"),
+      proxyPort,
+      reduction: {
+        triggerMinChars: 256,
+        maxToolChars: 300,
+        passes: {
+          readStateCompaction: false,
+          toolPayloadTrim: true,
+          htmlSlimming: false,
+          execOutputTruncation: true,
+          agentsStartupOptimization: false,
+        },
+      },
+    }),
+    logger: createConsoleLogger(false),
+    forwarder,
+  });
+
+  try {
+    const requestResp = await fetch(`${runtime.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-session-id": "sess-state-1",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        stream: false,
+        system: "Your working directory is: /repo/demo",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "summarize this" },
+              { type: "tool_result", tool_use_id: "toolu_1", content: longToolPayload },
+            ],
+          },
+        ],
+        max_tokens: 256,
+      }),
+    });
+
+    assert.equal(requestResp.status, 200);
+
+    const latest = JSON.parse(
+      await readFile(join(dir, "state", "session-state", "latest.json"), "utf8"),
+    ) as { sessionId: string };
+    assert.equal(latest.sessionId, "sess-state-1");
+
+    const snapshot = JSON.parse(
+      await readFile(join(dir, "state", "session-state", "sessions", "sess-state-1.json"), "utf8"),
+    ) as { latestResponseId?: string; reductionSavedChars?: number; workspaceHint?: string };
+    assert.equal(snapshot.latestResponseId, "msg_state_1");
+    assert.equal(typeof snapshot.reductionSavedChars, "number");
+    assert.equal(snapshot.workspaceHint, "/repo/demo");
+
+    const ux = JSON.parse(
+      await readFile(join(dir, "state", "ux-effects", "latest.json"), "utf8"),
+    ) as { sessionId: string; savedCount: number };
+    assert.equal(ux.sessionId, "sess-state-1");
+    assert.ok(ux.savedCount > 0);
   } finally {
     await runtime.close();
     await rm(dir, { recursive: true, force: true });
