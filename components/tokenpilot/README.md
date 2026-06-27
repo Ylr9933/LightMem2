@@ -67,9 +67,11 @@ This is the intended reuse boundary for future hosts such as Codex CLI or Claude
 components/tokenpilot/
 ├── adapters/
 │   ├── openclaw/         # OpenClaw adapter, hooks, commands, embedded proxy
-│   └── codex/            # Codex CLI adapter, hooks, provider install, local proxy
+│   ├── codex/            # Codex CLI adapter, hooks, provider install, local proxy
+│   └── claude-code/      # Claude Code adapter, gateway routing, MCP recovery
 ├── products/
-│   └── cli/              # Standalone lightmem2 CLI surface
+│   ├── cli/              # Standalone lightmem2 CLI surface
+│   └── mcp/              # Shared memory_fault_recover MCP server
 ├── README.md
 └── packages/
     ├── host-adapter/     # Shared host contracts and host-specific path/state interfaces
@@ -131,6 +133,18 @@ lightmem2 codex reduction status
 lightmem2 codex stabilizer target user
 ```
 
+Current Claude Code CLI equivalents:
+
+```bash
+lightmem2 claude-code status
+lightmem2 claude-code report
+lightmem2 claude-code doctor
+lightmem2 claude-code visual
+lightmem2 claude-code mode normal
+lightmem2 claude-code reduction status
+lightmem2 claude-code stabilizer target developer
+```
+
 ### Stabilizer
 
 ```text
@@ -162,6 +176,7 @@ Recommended default behavior:
 - keep `stabilizer` enabled in all modes
 - enable `eviction` mainly for longer continuous-session workloads
 - on Codex, use `conservative` or `normal`; `aggressive` is intentionally unavailable
+- on Claude Code, use `conservative` or `normal`; `aggressive` is intentionally unavailable
 
 ### Runtime Modes
 
@@ -184,6 +199,11 @@ Codex currently supports only:
 - `lightmem2 codex mode conservative`
 - `lightmem2 codex mode normal`
 
+Claude Code currently supports only:
+
+- `lightmem2 claude-code mode conservative`
+- `lightmem2 claude-code mode normal`
+
 ## Configuration
 
 TokenPilot is configured through your OpenClaw plugin entry, typically in:
@@ -196,6 +216,12 @@ The Codex adapter uses a separate runtime config file, typically:
 
 ```text
 ~/.codex/tokenpilot.json
+```
+
+The Claude Code adapter uses its own runtime config file, typically:
+
+```text
+~/.claude/tokenpilot.json
 ```
 
 Minimal shape:

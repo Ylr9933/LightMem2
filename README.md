@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Framework-LightMem2-black" alt="framework">
-  <img src="https://img.shields.io/badge/Hosts-OpenClaw%20%7C%20Codex-green" alt="hosts">
+  <img src="https://img.shields.io/badge/Hosts-OpenClaw%20%7C%20Codex%20%7C%20Claude%20Code-green" alt="hosts">
   <img src="https://img.shields.io/badge/Component-TokenPilot-blue" alt="component">
   <img src="https://img.shields.io/badge/Package%20Manager-pnpm-informational" alt="pnpm">
   <img src="https://img.shields.io/badge/License-MIT-brightgreen" alt="license">
@@ -140,6 +140,31 @@ The install step creates:
 ~/.local/bin/lightmem2
 ```
 
+### Claude Code
+
+If your Claude Code files are not under the default `~/.claude`, you can override them with:
+
+```bash
+export CLAUDE_CODE_SETTINGS_PATH="/path/to/settings.json"
+export CLAUDE_CODE_MCP_CONFIG_PATH="/path/to/.claude.json"
+export TOKENPILOT_CLAUDE_CODE_CONFIG="/path/to/tokenpilot.json"
+```
+
+Then build and install the Claude Code adapter:
+
+```bash
+npm --prefix components/tokenpilot/adapters/claude-code run build
+npm --prefix components/tokenpilot/adapters/claude-code run install:claude-code
+```
+
+The Claude Code installer will:
+
+- update `~/.claude/settings.json` for local gateway routing
+- enable the required tool-search environment flag
+- write TokenPilot runtime config to `~/.claude/tokenpilot.json`
+- register the shared `tokenpilot_memory_fault_recover` MCP server in `~/.claude/.claude.json`
+- preserve existing Claude files as `.tokenpilot.bak` backups before rewriting
+
 <span id='quickstart'/>
 
 ## ⚡ Quick Start
@@ -236,6 +261,30 @@ For the full Codex adapter notes, see:
 
 - [components/tokenpilot/adapters/codex/README.md](./components/tokenpilot/adapters/codex/README.md)
 
+#### Claude Code
+
+The current Claude Code path also uses the standalone CLI, but routes requests
+through a local Anthropic-compatible gateway and a shared MCP recovery server.
+
+1. Run the Claude Code install flow shown above.
+2. Start Claude Code normally.
+3. In another terminal, verify the adapter:
+
+```bash
+lightmem2 claude-code status
+lightmem2 claude-code doctor
+lightmem2 claude-code mode normal
+lightmem2 claude-code reduction status
+lightmem2 claude-code stabilizer target developer
+```
+
+Claude Code currently supports `mode conservative` and `mode normal`.
+`mode aggressive` is not available on the current Claude Code adapter.
+
+For the full Claude Code adapter notes, see:
+
+- [components/tokenpilot/adapters/claude-code/README.md](./components/tokenpilot/adapters/claude-code/README.md)
+
 ### 3. Run the Built-In Smoke Test
 
 ```bash
@@ -270,6 +319,7 @@ Once the basic runtime path is working, use these component-level docs:
 - [components/README.md](./components/README.md) for the framework-level component index
 - [components/tokenpilot/README.md](./components/tokenpilot/README.md) for TokenPilot commands, configuration, runtime state, and debugging
 - [components/tokenpilot/adapters/codex/README.md](./components/tokenpilot/adapters/codex/README.md) for Codex-specific install, command scope, and proxy runtime notes
+- [components/tokenpilot/adapters/claude-code/README.md](./components/tokenpilot/adapters/claude-code/README.md) for Claude Code install, gateway routing, MCP recovery, and current command scope
 - [components/tokenpilot/products/cli/package.json](./components/tokenpilot/products/cli/package.json) for the standalone `lightmem2` CLI package
 - [experiments/README.md](./experiments/README.md) for top-level benchmark reproduction entrypoints
 - [experiments/tokenpilot/README.md](./experiments/tokenpilot/README.md) for the current TokenPilot benchmark hub
@@ -317,7 +367,7 @@ Eviction view:
 
 ## 🏗️ Architecture
 
-The current public repository is organized around released component and its current production host adapter.
+The current public repository is organized around the released component and its current host adapters.
 
 At a high level:
 
@@ -332,7 +382,11 @@ LightMem2/
 │   └── tokenpilot/
 │       ├── adapters/
 │       │   ├── openclaw/         # production host adapter for OpenClaw
-│       │   └── codex/            # Codex CLI adapter with hooks + local proxy
+│       │   ├── codex/            # Codex CLI adapter with hooks + local proxy
+│       │   └── claude-code/      # Claude Code adapter with gateway routing + MCP recovery
+│       ├── products/
+│       │   ├── cli/              # shared lightmem2 CLI surface
+│       │   └── mcp/              # shared memory_fault_recover MCP server
 │       └── packages/
 │           ├── host-adapter/     # Shared host-adapter contracts and path-resolution interfaces
 │           ├── runtime-core/     # Host-agnostic runtime engine and shared execution logic
@@ -500,6 +554,7 @@ The exact config file and install surface depend on the host adapter:
 
 - OpenClaw: `~/.openclaw/openclaw.json`
 - Codex CLI: `~/.codex/tokenpilot.json`
+- Claude Code: `~/.claude/tokenpilot.json`
 
 ### Default Runtime Mode
 
@@ -524,6 +579,13 @@ lightmem2 codex mode conservative
 lightmem2 codex mode normal
 ```
 
+For Claude Code, use:
+
+```bash
+lightmem2 claude-code mode conservative
+lightmem2 claude-code mode normal
+```
+
 Recommended starting behavior:
 
 - keep `stabilizer` enabled
@@ -539,6 +601,7 @@ For full host-specific configuration, see:
 - [components/tokenpilot/README.md](./components/tokenpilot/README.md)
 - [components/tokenpilot/adapters/openclaw/README.md](./components/tokenpilot/adapters/openclaw/README.md)
 - [components/tokenpilot/adapters/codex/README.md](./components/tokenpilot/adapters/codex/README.md)
+- [components/tokenpilot/adapters/claude-code/README.md](./components/tokenpilot/adapters/claude-code/README.md)
 
 <span id='citation'/>
 

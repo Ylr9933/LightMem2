@@ -8,6 +8,7 @@ Current scope:
 - inspect local install state with doctor
 - register a real MCP-backed `memory_fault_recover` tool
 - decode and forward Anthropic Messages requests through shared gateway helpers
+- expose `lightmem2 claude-code ...` through the shared CLI surface
 
 Not implemented in this first scaffold:
 
@@ -15,11 +16,27 @@ Not implemented in this first scaffold:
 - aggressive mode parity with OpenClaw
 - in-host slash commands
 
-Install now writes two things:
+Install now writes three things:
 
 - `~/.claude/settings.json` for gateway routing and tool-search env
 - `~/.claude/.claude.json` for the `tokenpilot_memory_fault_recover` MCP server
+- `~/.claude/tokenpilot.json` for TokenPilot runtime config
+
+The installer also preserves existing files as:
+
+- `settings.json.tokenpilot.bak`
+- `.claude.json.tokenpilot.bak`
 
 That MCP server backs the same recovery hints injected into trimmed payloads, so
 Claude Code can call the real `memory_fault_recover` tool instead of only
 seeing protocol text.
+
+Current doctor checks report whether:
+
+- Claude settings are installed
+- gateway routing is active
+- tool search is enabled
+- recovery MCP is installed
+- MCP `TOKENPILOT_STATE_DIR` matches the TokenPilot config state dir
+- proxy health is reachable
+- session-state / ux-effects data already exist
