@@ -23,3 +23,4 @@ export * from "./pipeline/after-call.js";
 export * from "./gateway/http-forwarder.js";
 export * from "./gateway/stream-observer.js";
 export * from "./state/path-resolver.js";
+export * from "./testing/host-e2e.js";

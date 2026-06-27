@@ -4,7 +4,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { HostGatewayForwarder } from "@tokenpilot/host-adapter";
+import {
+  assertRecoveryProtocolText,
+  assertStablePrefixRewrite,
+  type HostGatewayForwarder,
+} from "@tokenpilot/host-adapter";
 import { normalizeTokenPilotClaudeCodeConfig } from "../src/config.js";
 import { startClaudeCodeGatewayRuntime } from "../src/gateway-runtime.js";
 import { createConsoleLogger } from "../src/logger.js";
@@ -254,12 +258,17 @@ test("gateway runtime applies stable-prefix rewrite before forwarding", async ()
     assert.equal(requestResp.status, 200);
     assert.equal(seenPayloads.length, 1);
     assert.equal(seenPayloads[0]?.model, "claude-sonnet-4-6");
-    assert.match(String(seenPayloads[0]?.system ?? ""), /^Your working directory is: <WORKDIR>\nRuntime: agent=<AGENT_ID> \|\nBe precise\./);
-    assert.match(String(seenPayloads[0]?.system ?? ""), /\[Recovery Protocol\]/);
+    assertStablePrefixRewrite({
+      sanitizedPromptText: String(seenPayloads[0]?.system ?? ""),
+      dynamicContextText: String(((seenPayloads[0]?.messages as Array<Record<string, unknown>>)?.[0]?.content as Array<Record<string, unknown>>)?.[0]?.text ?? ""),
+      workdir: "/tmp/demo",
+      agentId: "agent-123",
+    });
+    assert.match(String(seenPayloads[0]?.system ?? ""), /Be precise\./);
+    assertRecoveryProtocolText(String(seenPayloads[0]?.system ?? ""));
     const forwardedMessages = seenPayloads[0]?.messages as Array<Record<string, unknown>>;
     const forwardedUserBlocks = forwardedMessages?.[0]?.content as Array<Record<string, unknown>>;
-    assert.match(String(forwardedUserBlocks?.[0]?.text ?? ""), /WORKDIR: \/tmp\/demo/);
-    assert.match(String(forwardedUserBlocks?.[0]?.text ?? ""), /AGENT_ID: agent-123/);
+    assert.equal(Array.isArray(forwardedUserBlocks), true);
   } finally {
     await runtime.close();
     await rm(dir, { recursive: true, force: true });

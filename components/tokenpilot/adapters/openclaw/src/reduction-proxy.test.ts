@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {
+  assertReductionMarkerText,
+  assertStablePrefixRewrite,
+} from "@tokenpilot/host-adapter";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const plugin = require("./index.js");
@@ -137,7 +141,7 @@ test("applyProxyReductionToInput reduces large tool payload and preserves non-to
   assert.equal(out.changedItems, 1);
   assert.equal(out.changedBlocks, 1);
   assert.ok(out.savedChars > 0);
-  assert.match(String(payload.input[0].content), /\[Tool payload trimmed\]/);
+  assertReductionMarkerText(String(payload.input[0].content));
   assert.match(String(payload.input[0].content), /memory_fault_recover/);
   assert.match(String(payload.input[0].content), /"dataKey":/);
   assert.equal(payload.input[1].content, "keep me unchanged");
@@ -163,7 +167,7 @@ test("applyProxyReductionToInput reduces responses-style function call fields", 
   assert.equal(out.changedBlocks, 1);
   assert.ok(out.savedChars > 0);
   assert.equal(payload.input[0].arguments, largeArguments);
-  assert.match(String(payload.input[1].output), /\[Tool payload trimmed\]/);
+  assertReductionMarkerText(String(payload.input[1].output));
 });
 
 test("stripInternalPayloadMarkers removes internal flags before forwarding upstream", () => {
@@ -206,10 +210,13 @@ test("rewritePayloadForStablePrefix preserves content shape and injects dynamic 
     dynamicContextTarget: "user",
   });
 
-  assert.match(String(payload.input[0].content[0].text), /Your working directory is: <WORKDIR>/);
   assert.equal(Array.isArray(payload.input[0].content), true);
-  assert.match(String(payload.input[1].content[0].text), /- WORKDIR: \/tmp\/pinchbench\/0213\/agent_workspace_j0013/);
-  assert.match(String(payload.input[1].content[0].text), /- AGENT_ID: bench-tokenpilot-gpt-5-4-mini-0213-j0013/);
+  assertStablePrefixRewrite({
+    sanitizedPromptText: String(payload.input[0].content[0].text),
+    dynamicContextText: String(payload.input[1].content[0].text),
+    workdir: "/tmp/pinchbench/0213/agent_workspace_j0013",
+    agentId: "bench-tokenpilot-gpt-5-4-mini-0213-j0013",
+  });
   assert.match(String(payload.input[1].content[0].text), /Please continue\./);
   assert.match(out.promptCacheKey, /^runtime-pfx-/);
 });
