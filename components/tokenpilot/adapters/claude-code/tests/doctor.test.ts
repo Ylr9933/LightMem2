@@ -10,7 +10,7 @@ import {
   normalizeTokenPilotClaudeCodeConfig,
   proxyBaseUrlForPort,
 } from "../src/config.js";
-import { inspectClaudeCodeDoctor } from "../src/doctor.js";
+import { formatClaudeCodeDoctorReport, inspectClaudeCodeDoctor } from "../src/doctor.js";
 
 test("inspectClaudeCodeDoctor reports missing settings honestly", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-doctor-"));
@@ -27,8 +27,21 @@ test("inspectClaudeCodeDoctor reports missing settings honestly", async () => {
       tokenPilotConfigPath,
     });
     assert.equal(report.settingsInstalled, false);
+    assert.equal(report.hooksInstalled, false);
+    assert.equal(report.hooksComplete, false);
+    assert.equal(report.hooksMatchExpectedCommand, false);
+    assert.deepEqual(report.installedHookEvents, []);
+    assert.deepEqual(report.missingHookEvents, [
+      "SessionStart",
+      "PreToolUse",
+      "PostToolUse",
+      "Stop",
+      "SessionEnd",
+    ]);
     assert.equal(report.mcpInstalled, false);
     assert.equal(report.mcpStateDirMatches, false);
+    assert.equal(report.mcpCommandMatches, false);
+    assert.equal(report.mcpArgsMatch, false);
     assert.equal(report.routedViaGateway, false);
     assert.equal(report.toolSearchEnabled, false);
     assert.equal(report.stateDirExists, false);
@@ -51,6 +64,13 @@ test("inspectClaudeCodeDoctor detects gateway routing from settings env", async 
       env: {
         ANTHROPIC_BASE_URL: proxyBaseUrlForPort(proxyPort),
         [CLAUDE_TOOL_SEARCH_ENV]: CLAUDE_TOOL_SEARCH_DEFAULT,
+      },
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+        PreToolUse: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+        PostToolUse: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+        Stop: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+        SessionEnd: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
       },
     }, null, 2)}\n`, "utf8");
     await writeFile(mcpConfigPath, `${JSON.stringify({
@@ -79,8 +99,21 @@ test("inspectClaudeCodeDoctor detects gateway routing from settings env", async 
       tokenPilotConfigPath,
     });
     assert.equal(report.settingsInstalled, true);
+    assert.equal(report.hooksInstalled, true);
+    assert.equal(report.hooksComplete, true);
+    assert.equal(report.hooksMatchExpectedCommand, false);
+    assert.deepEqual(report.installedHookEvents, [
+      "SessionStart",
+      "PreToolUse",
+      "PostToolUse",
+      "Stop",
+      "SessionEnd",
+    ]);
+    assert.deepEqual(report.missingHookEvents, []);
     assert.equal(report.mcpInstalled, true);
     assert.equal(report.mcpStateDirMatches, true);
+    assert.equal(report.mcpCommandMatches, true);
+    assert.equal(report.mcpArgsMatch, false);
     assert.equal(report.routedViaGateway, true);
     assert.equal(report.toolSearchEnabled, true);
     assert.equal(report.stateDirExists, true);
@@ -89,4 +122,174 @@ test("inspectClaudeCodeDoctor detects gateway routing from settings env", async 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("inspectClaudeCodeDoctor reports partial hook installs explicitly", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-doctor-partial-hooks-"));
+  try {
+    const proxyPort = 18779;
+    const stateDir = join(dir, "state");
+    const settingsPath = join(dir, "settings.json");
+    const mcpConfigPath = join(dir, ".claude.json");
+    const tokenPilotConfigPath = join(dir, "tokenpilot.json");
+    await writeFile(settingsPath, `${JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: proxyBaseUrlForPort(proxyPort),
+        [CLAUDE_TOOL_SEARCH_ENV]: CLAUDE_TOOL_SEARCH_DEFAULT,
+      },
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+        PostToolUse: [{ hooks: [{ type: "command", command: `${process.execPath} /tmp/tokenpilot/hooks-handler.js` }] }],
+      },
+    }, null, 2)}\n`, "utf8");
+    await writeFile(mcpConfigPath, `${JSON.stringify({
+      mcpServers: {
+        tokenpilot_memory_fault_recover: {
+          command: process.execPath,
+          args: ["/tmp/server.js"],
+          env: {
+            TOKENPILOT_STATE_DIR: stateDir,
+          },
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const report = await inspectClaudeCodeDoctor({
+      config: normalizeTokenPilotClaudeCodeConfig({
+        stateDir,
+        proxyPort,
+      }),
+      mcpConfigPath,
+      settingsPath,
+      tokenPilotConfigPath,
+    });
+    assert.equal(report.hooksInstalled, true);
+    assert.equal(report.hooksComplete, false);
+    assert.equal(report.hooksMatchExpectedCommand, false);
+    assert.deepEqual(report.installedHookEvents, [
+      "SessionStart",
+      "PostToolUse",
+    ]);
+    assert.deepEqual(report.missingHookEvents, [
+      "PreToolUse",
+      "Stop",
+      "SessionEnd",
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("inspectClaudeCodeDoctor detects hook command drift explicitly", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-doctor-hook-drift-"));
+  try {
+    const proxyPort = 18780;
+    const stateDir = join(dir, "state");
+    const settingsPath = join(dir, "settings.json");
+    const mcpConfigPath = join(dir, ".claude.json");
+    const tokenPilotConfigPath = join(dir, "tokenpilot.json");
+    await writeFile(settingsPath, `${JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: proxyBaseUrlForPort(proxyPort),
+        [CLAUDE_TOOL_SEARCH_ENV]: CLAUDE_TOOL_SEARCH_DEFAULT,
+      },
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+        PreToolUse: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+        PostToolUse: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+        SessionEnd: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+      },
+    }, null, 2)}\n`, "utf8");
+    await writeFile(mcpConfigPath, `${JSON.stringify({
+      mcpServers: {
+        tokenpilot_memory_fault_recover: {
+          command: process.execPath,
+          args: ["/tmp/server.js"],
+          env: {
+            TOKENPILOT_STATE_DIR: stateDir,
+          },
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const report = await inspectClaudeCodeDoctor({
+      config: normalizeTokenPilotClaudeCodeConfig({
+        stateDir,
+        proxyPort,
+      }),
+      mcpConfigPath,
+      settingsPath,
+      tokenPilotConfigPath,
+    });
+    assert.equal(report.hooksInstalled, true);
+    assert.equal(report.hooksComplete, true);
+    assert.equal(report.hooksMatchExpectedCommand, false);
+    assert.equal(report.mcpCommandMatches, true);
+    assert.equal(report.mcpArgsMatch, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("inspectClaudeCodeDoctor detects MCP command and args drift explicitly", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-doctor-mcp-drift-"));
+  try {
+    const proxyPort = 18781;
+    const stateDir = join(dir, "state");
+    const settingsPath = join(dir, "settings.json");
+    const mcpConfigPath = join(dir, ".claude.json");
+    const tokenPilotConfigPath = join(dir, "tokenpilot.json");
+    await writeFile(settingsPath, `${JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: proxyBaseUrlForPort(proxyPort),
+        [CLAUDE_TOOL_SEARCH_ENV]: CLAUDE_TOOL_SEARCH_DEFAULT,
+      },
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "node /old/path/hooks-handler.js" }] }],
+      },
+    }, null, 2)}\n`, "utf8");
+    await writeFile(mcpConfigPath, `${JSON.stringify({
+      mcpServers: {
+        tokenpilot_memory_fault_recover: {
+          command: "/old/node",
+          args: ["/old/server.js"],
+          env: {
+            TOKENPILOT_STATE_DIR: stateDir,
+          },
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const report = await inspectClaudeCodeDoctor({
+      config: normalizeTokenPilotClaudeCodeConfig({
+        stateDir,
+        proxyPort,
+      }),
+      mcpConfigPath,
+      settingsPath,
+      tokenPilotConfigPath,
+    });
+    assert.equal(report.mcpInstalled, true);
+    assert.equal(report.mcpStateDirMatches, true);
+    assert.equal(report.mcpCommandMatches, false);
+    assert.equal(report.mcpArgsMatch, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("formatClaudeCodeDoctorReport includes remediation hints for drifted installs", async () => {
+  const report = await inspectClaudeCodeDoctor({
+    config: normalizeTokenPilotClaudeCodeConfig({
+      stateDir: join(tmpdir(), "lightmem2-claude-doctor-remediation-state"),
+      proxyPort: 18782,
+    }),
+    settingsPath: join(tmpdir(), "lightmem2-missing-settings.json"),
+    tokenPilotConfigPath: join(tmpdir(), "lightmem2-missing-tokenpilot.json"),
+    mcpConfigPath: join(tmpdir(), "lightmem2-missing-claude.json"),
+  });
+  const text = formatClaudeCodeDoctorReport(report);
+  assert.match(text, /Suggested fixes:/);
+  assert.match(text, /install:claude-code/);
 });

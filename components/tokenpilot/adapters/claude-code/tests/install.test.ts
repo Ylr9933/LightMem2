@@ -26,20 +26,31 @@ test("installClaudeCodeTokenPilot writes settings, MCP config, and backups exist
 
     const settings = JSON.parse(await readFile(settingsPath, "utf8")) as {
       env?: Record<string, string>;
+      hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
     };
     assert.equal(typeof settings.env?.ANTHROPIC_BASE_URL, "string");
     assert.equal(settings.env?.ENABLE_TOOL_SEARCH, "true");
     assert.equal(settings.env?.KEEP_ME, "1");
+    for (const eventName of ["SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"]) {
+      const entries = settings.hooks?.[eventName]?.[0]?.hooks;
+      assert.ok(Array.isArray(entries), `${eventName} hook group missing`);
+      assert.equal(String(entries[0]?.command ?? ""), result.expectedHookCommand);
+    }
 
     const mcp = JSON.parse(await readFile(mcpConfigPath, "utf8")) as {
-      mcpServers?: Record<string, { command?: string; env?: Record<string, string> }>;
+      mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
     };
     assert.equal(typeof mcp.mcpServers?.tokenpilot_memory_fault_recover?.command, "string");
     assert.equal(
       mcp.mcpServers?.tokenpilot_memory_fault_recover?.env?.TOKENPILOT_STATE_DIR,
       result.stateDir,
     );
+    assert.equal(mcp.mcpServers?.tokenpilot_memory_fault_recover?.command, result.expectedMcpCommand);
+    assert.deepEqual(mcp.mcpServers?.tokenpilot_memory_fault_recover?.args ?? [], result.expectedMcpArgs);
     assert.equal(typeof mcp.mcpServers?.existing?.command, "string");
+    assert.equal(result.hooksInstalled, true);
+    assert.match(result.expectedHookCommand, /hooks-handler\.(js|ts)/);
+    assert.ok(result.expectedMcpArgs.length > 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

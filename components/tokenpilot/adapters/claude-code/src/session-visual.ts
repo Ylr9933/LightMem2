@@ -29,6 +29,15 @@ export async function renderClaudeCodeSessionVisual(
     `- latest reduction savings: ${formatCount(topology.reductionSavedChars)}`,
   ];
 
+  if (topology.lastHookEvent) {
+    lines.push(`- last hook: ${topology.lastHookEvent}`);
+  }
+  if (topology.lastToolName) {
+    lines.push(`- last tool: ${topology.lastToolName}`);
+    lines.push(`- last tool input chars: ${formatCount(topology.lastToolInputChars)}`);
+    lines.push(`- last tool output chars: ${formatCount(topology.lastToolOutputChars)}`);
+  }
+
   if (topology.responseChain.length > 0) {
     lines.push(`- response chain: ${topology.responseChain.join(" -> ")}`);
   }

@@ -1,6 +1,7 @@
 export * from "./config.js";
 export * from "./doctor.js";
 export * from "./gateway-runtime.js";
+export * from "./hook-runtime.js";
 export * from "./host-config-adapter.js";
 export * from "./install.js";
 export * from "./logger.js";

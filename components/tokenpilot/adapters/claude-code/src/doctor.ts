@@ -12,6 +12,8 @@ import {
   proxyBaseUrlForPort,
   type TokenPilotClaudeCodeConfig,
 } from "./config.js";
+import { resolveClaudeCodeHookCommandForInstall } from "./install.js";
+import { resolveClaudeCodeMcpServerSpecForInstall } from "./install.js";
 
 export type ClaudeCodeDoctorReport = {
   settingsPath: string;
@@ -19,22 +21,62 @@ export type ClaudeCodeDoctorReport = {
   stateDir: string;
   proxyBaseUrl: string;
   mcpConfigPath: string;
+  expectedHookCommand: string;
+  expectedMcpCommand: string;
+  expectedMcpArgs: string[];
   settingsInstalled: boolean;
+  hooksInstalled: boolean;
+  hooksComplete: boolean;
+  hooksMatchExpectedCommand: boolean;
+  installedHookEvents: string[];
+  missingHookEvents: string[];
   routedViaGateway: boolean;
   toolSearchEnabled: boolean;
   proxyHealthy: boolean;
   upstreamBaseUrl: string;
   mcpInstalled: boolean;
   mcpStateDirMatches: boolean;
+  mcpCommandMatches: boolean;
+  mcpArgsMatch: boolean;
   stateDirExists: boolean;
   sessionStateAvailable: boolean;
   uxEffectsAvailable: boolean;
 };
 
+const HOOK_EVENT_NAMES = [
+  "SessionStart",
+  "PreToolUse",
+  "PostToolUse",
+  "Stop",
+  "SessionEnd",
+] as const;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function hookGroupHasTokenPilot(group: unknown): boolean {
+  if (!group || typeof group !== "object") return false;
+  const hooks = (group as Record<string, unknown>).hooks;
+  if (!Array.isArray(hooks)) return false;
+  return hooks.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const command = (entry as Record<string, unknown>).command;
+    return typeof command === "string" && command.includes("hooks-handler.");
+  });
+}
+
+function hookGroupHasExpectedCommand(group: unknown, expectedCommand: string): boolean {
+  if (!group || typeof group !== "object") return false;
+  const hooks = (group as Record<string, unknown>).hooks;
+  if (!Array.isArray(hooks)) return false;
+  return hooks.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const command = (entry as Record<string, unknown>).command;
+    return typeof command === "string" && command.trim() === expectedCommand;
+  });
 }
 
 async function checkHealth(baseUrl: string): Promise<boolean> {
@@ -46,16 +88,47 @@ async function checkHealth(baseUrl: string): Promise<boolean> {
   }
 }
 
+function remediationLines(report: ClaudeCodeDoctorReport): string[] {
+  const fixes: string[] = [];
+  if (!report.settingsInstalled) {
+    fixes.push("- run `pnpm --filter @tokenpilot/claude-code-adapter install:claude-code` to create Claude settings and gateway routing");
+    return fixes;
+  }
+  if (!report.routedViaGateway || !report.toolSearchEnabled) {
+    fixes.push("- rerun the Claude Code install command to refresh gateway env and tool-search settings");
+  }
+  if (!report.hooksInstalled || !report.hooksComplete || !report.hooksMatchExpectedCommand) {
+    fixes.push("- rerun the Claude Code install command to repair TokenPilot hook entries in `settings.json`");
+  }
+  if (!report.mcpInstalled || !report.mcpStateDirMatches || !report.mcpCommandMatches || !report.mcpArgsMatch) {
+    fixes.push("- rerun the Claude Code install command to refresh the recovery MCP server entry in `.claude.json`");
+  }
+  if (report.settingsInstalled && fixes.length === 0 && !report.proxyHealthy) {
+    fixes.push("- start the local TokenPilot Claude Code gateway before using Claude Code");
+  }
+  return fixes;
+}
+
 export function formatClaudeCodeDoctorReport(report: ClaudeCodeDoctorReport): string {
-  return [
+  const lines = [
     "TokenPilot Claude Code doctor:",
     `- tokenpilot config: ${report.tokenPilotConfigPath}`,
     `- claude settings: ${report.settingsPath}`,
     `- mcp config: ${report.mcpConfigPath}`,
     `- stateDir: ${report.stateDir}`,
+    `- expected hook command: ${report.expectedHookCommand}`,
+    `- expected MCP command: ${report.expectedMcpCommand}`,
+    `- expected MCP args: ${report.expectedMcpArgs.length > 0 ? report.expectedMcpArgs.join(" ") : "(none)"}`,
     `- settings installed: ${report.settingsInstalled ? "yes" : "no"}`,
+    `- observability hooks installed: ${report.hooksInstalled ? "yes" : "no"}`,
+    `- observability hooks complete: ${report.hooksComplete ? "yes" : "no"}`,
+    `- observability hooks match expected command: ${report.hooksMatchExpectedCommand ? "yes" : "no"}`,
+    `- installed hook events: ${report.installedHookEvents.length > 0 ? report.installedHookEvents.join(", ") : "(none)"}`,
+    `- missing hook events: ${report.missingHookEvents.length > 0 ? report.missingHookEvents.join(", ") : "(none)"}`,
     `- recovery MCP installed: ${report.mcpInstalled ? "yes" : "no"}`,
     `- recovery MCP stateDir matches: ${report.mcpStateDirMatches ? "yes" : "no"}`,
+    `- recovery MCP command matches: ${report.mcpCommandMatches ? "yes" : "no"}`,
+    `- recovery MCP args match: ${report.mcpArgsMatch ? "yes" : "no"}`,
     `- routed via gateway: ${report.routedViaGateway ? "yes" : "no"}`,
     `- tool search enabled: ${report.toolSearchEnabled ? "yes" : "no"}`,
     `- proxy healthy: ${report.proxyHealthy ? "yes" : "no"}`,
@@ -64,7 +137,13 @@ export function formatClaudeCodeDoctorReport(report: ClaudeCodeDoctorReport): st
     `- state dir exists: ${report.stateDirExists ? "yes" : "no"}`,
     `- session state available: ${report.sessionStateAvailable ? "yes" : "no"}`,
     `- ux effects available: ${report.uxEffectsAvailable ? "yes" : "no"}`,
-  ].join("\n");
+  ];
+  const fixes = remediationLines(report);
+  if (fixes.length > 0) {
+    lines.push("", "Suggested fixes:");
+    lines.push(...fixes);
+  }
+  return lines.join("\n");
 }
 
 export async function inspectClaudeCodeDoctor(params: {
@@ -74,20 +153,37 @@ export async function inspectClaudeCodeDoctor(params: {
   mcpConfigPath: string;
 }): Promise<ClaudeCodeDoctorReport> {
   const proxyBaseUrl = proxyBaseUrlForPort(params.config.proxyPort);
+  const expectedHookCommand = resolveClaudeCodeHookCommandForInstall();
+  const expectedMcpSpec = resolveClaudeCodeMcpServerSpecForInstall(params.config.stateDir);
   let settingsInstalled = false;
+  const installedHookEvents: string[] = [];
+  const matchedHookEvents: string[] = [];
   let routedViaGateway = false;
   let toolSearchEnabled = false;
   let mcpConfigPath = params.mcpConfigPath;
   let mcpInstalled = false;
   let mcpStateDirMatches = false;
+  let mcpCommandMatches = false;
+  let mcpArgsMatch = false;
 
   if (existsSync(params.settingsPath)) {
     settingsInstalled = true;
     try {
       const root = JSON.parse(await readFile(params.settingsPath, "utf8"));
-      const env = asRecord(asRecord(root).env);
+      const rootRecord = asRecord(root);
+      const env = asRecord(rootRecord.env);
       routedViaGateway = env.ANTHROPIC_BASE_URL === proxyBaseUrl;
       toolSearchEnabled = env[CLAUDE_TOOL_SEARCH_ENV] === CLAUDE_TOOL_SEARCH_DEFAULT;
+      const hooks = asRecord(rootRecord.hooks);
+      for (const name of HOOK_EVENT_NAMES) {
+        const groups = hooks[name];
+        if (Array.isArray(groups) && groups.some(hookGroupHasTokenPilot)) {
+          installedHookEvents.push(name);
+        }
+        if (Array.isArray(groups) && groups.some((group) => hookGroupHasExpectedCommand(group, expectedHookCommand))) {
+          matchedHookEvents.push(name);
+        }
+      }
     } catch {
       settingsInstalled = true;
     }
@@ -99,6 +195,11 @@ export async function inspectClaudeCodeDoctor(params: {
       mcpInstalled = true;
       mcpConfigPath = candidate;
       mcpStateDirMatches = inspected.env?.TOKENPILOT_STATE_DIR === params.config.stateDir;
+      mcpCommandMatches = inspected.command === expectedMcpSpec.command;
+      mcpArgsMatch =
+        Array.isArray(inspected.args)
+        && inspected.args.length === expectedMcpSpec.args.length
+        && inspected.args.every((value, index) => value === expectedMcpSpec.args[index]);
       break;
     }
   }
@@ -106,6 +207,9 @@ export async function inspectClaudeCodeDoctor(params: {
   const stateDirExists = existsSync(params.config.stateDir);
   const sessionStateAvailable = existsSync(join(params.config.stateDir, "session-state", "latest.json"));
   const uxEffectsAvailable = existsSync(join(params.config.stateDir, "ux-effects", "latest.json"));
+  const missingHookEvents = HOOK_EVENT_NAMES.filter((name) => !installedHookEvents.includes(name));
+  const hooksComplete = missingHookEvents.length === 0;
+  const hooksMatchExpectedCommand = HOOK_EVENT_NAMES.every((name) => matchedHookEvents.includes(name));
 
   return {
     settingsPath: params.settingsPath,
@@ -113,9 +217,19 @@ export async function inspectClaudeCodeDoctor(params: {
     tokenPilotConfigPath: params.tokenPilotConfigPath,
     stateDir: params.config.stateDir,
     proxyBaseUrl,
+    expectedHookCommand,
+    expectedMcpCommand: expectedMcpSpec.command,
+    expectedMcpArgs: expectedMcpSpec.args,
     settingsInstalled,
+    hooksInstalled: installedHookEvents.length > 0,
+    hooksComplete,
+    hooksMatchExpectedCommand,
+    installedHookEvents,
+    missingHookEvents,
     mcpInstalled,
     mcpStateDirMatches,
+    mcpCommandMatches,
+    mcpArgsMatch,
     routedViaGateway,
     toolSearchEnabled,
     proxyHealthy: await checkHealth(proxyBaseUrl),

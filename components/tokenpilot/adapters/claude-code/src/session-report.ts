@@ -12,6 +12,10 @@ export type ClaudeCodeSessionTopology = {
   responseChain: string[];
   latestModel?: string;
   workspaceHint?: string;
+  lastHookEvent?: string;
+  lastToolName?: string;
+  lastToolInputChars?: number;
+  lastToolOutputChars?: number;
   requestChars?: number;
   responseChars?: number;
   assistantChars?: number;
@@ -57,6 +61,10 @@ export async function resolveClaudeCodeSessionTopology(
     responseChain: buildResponseChain(bindings),
     latestModel: normalizeSessionId(snapshot?.latestModel) ?? normalizeSessionId(bindings[0]?.model),
     workspaceHint: normalizeSessionId(snapshot?.workspaceHint),
+    lastHookEvent: normalizeSessionId(snapshot?.lastHookEvent),
+    lastToolName: normalizeSessionId(snapshot?.lastToolName),
+    lastToolInputChars: snapshot?.lastToolInputChars,
+    lastToolOutputChars: snapshot?.lastToolOutputChars,
     requestChars: snapshot?.requestChars ?? bindings[0]?.requestChars,
     responseChars: snapshot?.responseChars ?? bindings[0]?.responseChars,
     assistantChars: snapshot?.assistantChars ?? bindings[0]?.assistantChars,

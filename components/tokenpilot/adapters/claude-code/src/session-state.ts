@@ -7,6 +7,10 @@ export type ClaudeCodeSessionSnapshot = {
   previousResponseId?: string;
   latestModel?: string;
   workspaceHint?: string;
+  lastHookEvent?: string;
+  lastToolName?: string;
+  lastToolInputChars?: number;
+  lastToolOutputChars?: number;
   requestChars?: number;
   responseChars?: number;
   assistantChars?: number;
@@ -97,6 +101,10 @@ export async function upsertClaudeCodeSessionSnapshot(
     previousResponseId: patch.previousResponseId ?? current?.previousResponseId,
     latestModel: patch.latestModel ?? current?.latestModel,
     workspaceHint: patch.workspaceHint ?? current?.workspaceHint,
+    lastHookEvent: patch.lastHookEvent ?? current?.lastHookEvent,
+    lastToolName: patch.lastToolName ?? current?.lastToolName,
+    lastToolInputChars: patch.lastToolInputChars ?? current?.lastToolInputChars,
+    lastToolOutputChars: patch.lastToolOutputChars ?? current?.lastToolOutputChars,
     requestChars: patch.requestChars ?? current?.requestChars,
     responseChars: patch.responseChars ?? current?.responseChars,
     assistantChars: patch.assistantChars ?? current?.assistantChars,

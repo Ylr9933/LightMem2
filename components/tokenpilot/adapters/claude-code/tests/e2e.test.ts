@@ -170,6 +170,8 @@ test("Claude Code host e2e wires install, gateway reduction, report/visual, and 
       doctorPatterns: [
         /TokenPilot Claude Code doctor:/,
         /settings installed: yes/,
+        /observability hooks installed: yes/,
+        /observability hooks complete: yes/,
         /recovery MCP installed: yes/,
         /recovery MCP stateDir matches: yes/,
         /routed via gateway: yes/,

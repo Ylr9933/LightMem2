@@ -2,7 +2,7 @@ import { build } from "esbuild";
 
 async function main() {
   await build({
-    entryPoints: ["src/index.ts"],
+    entryPoints: ["src/index.ts", "src/hooks-handler.ts"],
     bundle: true,
     outdir: "dist",
     platform: "node",

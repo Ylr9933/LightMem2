@@ -11,6 +11,10 @@ async function main() {
     `- tokenpilot config: ${result.tokenPilotConfigPath}`,
     `- state dir: ${result.stateDir}`,
     `- proxy base URL: ${result.proxyBaseUrl}`,
+    `- observability hooks installed: ${result.hooksInstalled ? "yes" : "no"}`,
+    `- expected hook command: ${result.expectedHookCommand}`,
+    `- expected MCP command: ${result.expectedMcpCommand}`,
+    `- expected MCP args: ${result.expectedMcpArgs.join(" ")}`,
     `- tool search env: ${result.toolSearchEnvName}=${result.toolSearchEnvValue}`,
     `- recovery MCP server: ${result.mcpServerName}`,
   ].join("\n"));
