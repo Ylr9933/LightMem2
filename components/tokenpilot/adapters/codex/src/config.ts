@@ -71,6 +71,7 @@ export type CodexMcpServerConfig = {
   command: string;
   args: string[];
   env: Record<string, string>;
+  startupTimeoutSec?: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -272,7 +273,15 @@ export async function readCodexMcpServerFromToml(
     const parsed = parseTomlStringValue(value);
     if (parsed) env[key] = parsed;
   }
-  return { command, args, env };
+  const startupTimeoutSec = section.values.startup_timeout_sec
+    ? Number(section.values.startup_timeout_sec)
+    : undefined;
+  return {
+    command,
+    args,
+    env,
+    startupTimeoutSec: Number.isFinite(startupTimeoutSec) ? startupTimeoutSec : undefined,
+  };
 }
 
 export async function resolveUpstreamProvider(
