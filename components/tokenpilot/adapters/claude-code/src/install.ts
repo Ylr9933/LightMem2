@@ -5,6 +5,7 @@ import {
   DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
   DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
   probeTokenPilotMcpServer,
+  resolveTokenPilotMcpProbeServerSpec,
   resolveTokenPilotMcpServerSpec,
   type TokenPilotMcpServerSpec,
 } from "@tokenpilot/mcp";
@@ -57,6 +58,12 @@ export function resolveClaudeCodeHookCommandForInstall(): string {
 
 export function resolveClaudeCodeMcpServerSpecForInstall(stateDir: string): TokenPilotMcpServerSpec {
   return resolveTokenPilotMcpServerSpec({
+    stateDir,
+  });
+}
+
+export function resolveClaudeCodeMcpServerSpecForProbe(stateDir: string): TokenPilotMcpServerSpec {
+  return resolveTokenPilotMcpProbeServerSpec({
     stateDir,
   });
 }
@@ -114,6 +121,7 @@ export async function installClaudeCodeTokenPilot(params?: {
   const config = await loadTokenPilotClaudeCodeConfig(tokenPilotConfigPath);
   await writeTokenPilotClaudeCodeConfig(config, tokenPilotConfigPath);
   const mcpServer = resolveClaudeCodeMcpServerSpecForInstall(config.stateDir);
+  const mcpProbeServer = resolveClaudeCodeMcpServerSpecForProbe(config.stateDir);
 
   const existing = existsSync(settingsPath)
     ? JSON.parse(await readFile(settingsPath, "utf8"))
@@ -174,7 +182,7 @@ export async function installClaudeCodeTokenPilot(params?: {
       degraded: true,
       detail: "MCP startup probe skipped by installer options",
     }
-    : await probeTokenPilotMcpServer(mcpServer, {
+    : await probeTokenPilotMcpServer(mcpProbeServer, {
       timeoutMs: DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
       clientName: "tokenpilot-claude-code-install",
       clientVersion: "0.1.0",

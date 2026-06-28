@@ -66,7 +66,33 @@ function packageRootFromHere(): string {
   return fromDist;
 }
 
+function buildTokenPilotMcpServerSpec(entryPath: string, stateDir?: string): TokenPilotMcpServerSpec {
+  return {
+    serverName: TOKENPILOT_MCP_SERVER_NAME,
+    command: process.execPath,
+    args: [entryPath],
+    env: {
+      TOKENPILOT_STATE_DIR: resolveRecoveryStateDir(stateDir),
+    },
+    entryPath,
+  };
+}
+
 export function resolveTokenPilotMcpServerSpec(params?: {
+  stateDir?: string;
+  requireBuild?: boolean;
+}): TokenPilotMcpServerSpec {
+  const packageRoot = packageRootFromHere();
+  const distEntryPath = join(packageRoot, "dist", "server.js");
+  if (params?.requireBuild !== false && !existsSync(distEntryPath)) {
+    throw new Error(
+      `TokenPilot MCP server is not built yet: ${distEntryPath}. Run \`pnpm --dir <repo> --filter @tokenpilot/mcp build\` first.`,
+    );
+  }
+  return buildTokenPilotMcpServerSpec(distEntryPath, params?.stateDir);
+}
+
+export function resolveTokenPilotMcpProbeServerSpec(params?: {
   stateDir?: string;
   requireBuild?: boolean;
 }): TokenPilotMcpServerSpec {
@@ -77,30 +103,38 @@ export function resolveTokenPilotMcpServerSpec(params?: {
     process.execArgv.includes("--import")
     && process.execArgv.some((value) => value.includes("tsx"));
 
-  let entryPath = distEntryPath;
-  let command = process.execPath;
-  let args = [entryPath];
-
   if (runningViaTsx && existsSync(srcEntryPath)) {
-    entryPath = srcEntryPath;
-    args = ["--import", "tsx", entryPath];
-  } else if (params?.requireBuild !== false && !existsSync(distEntryPath)) {
+    return {
+      serverName: TOKENPILOT_MCP_SERVER_NAME,
+      command: process.execPath,
+      args: ["--import", "tsx", srcEntryPath],
+      env: {
+        TOKENPILOT_STATE_DIR: resolveRecoveryStateDir(params?.stateDir),
+      },
+      entryPath: srcEntryPath,
+    };
+  }
+
+  if (existsSync(distEntryPath)) {
+    return buildTokenPilotMcpServerSpec(distEntryPath, params?.stateDir);
+  }
+  if (existsSync(srcEntryPath)) {
+    return {
+      serverName: TOKENPILOT_MCP_SERVER_NAME,
+      command: process.execPath,
+      args: ["--import", "tsx", srcEntryPath],
+      env: {
+        TOKENPILOT_STATE_DIR: resolveRecoveryStateDir(params?.stateDir),
+      },
+      entryPath: srcEntryPath,
+    };
+  }
+  if (params?.requireBuild !== false) {
     throw new Error(
       `TokenPilot MCP server is not built yet: ${distEntryPath}. Run \`pnpm --dir <repo> --filter @tokenpilot/mcp build\` first.`,
     );
-  } else {
-    entryPath = distEntryPath;
-    args = [entryPath];
   }
-  return {
-    serverName: TOKENPILOT_MCP_SERVER_NAME,
-    command,
-    args,
-    env: {
-      TOKENPILOT_STATE_DIR: resolveRecoveryStateDir(params?.stateDir),
-    },
-    entryPath,
-  };
+  return buildTokenPilotMcpServerSpec(distEntryPath, params?.stateDir);
 }
 
 export type TokenPilotMcpWireProtocol = "newline_json" | "content_length";

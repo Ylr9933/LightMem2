@@ -5,6 +5,7 @@ import {
   DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
   DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
   probeTokenPilotMcpServer,
+  resolveTokenPilotMcpProbeServerSpec,
   resolveTokenPilotMcpServerSpec,
   type TokenPilotMcpServerSpec,
 } from "@tokenpilot/mcp";
@@ -140,6 +141,12 @@ export function resolveCodexMcpServerSpecForInstall(stateDir: string): TokenPilo
   });
 }
 
+export function resolveCodexMcpServerSpecForProbe(stateDir: string): TokenPilotMcpServerSpec {
+  return resolveTokenPilotMcpProbeServerSpec({
+    stateDir,
+  });
+}
+
 function asHookConfig(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -235,6 +242,7 @@ export async function installCodexTokenPilot(params?: {
   await writeTokenPilotCodexConfig(tokenPilotConfig, tokenPilotConfigPath);
   const baseUrl = `http://127.0.0.1:${tokenPilotConfig.proxyPort}/v1`;
   const mcpServer = resolveCodexMcpServerSpecForInstall(tokenPilotConfig.stateDir);
+  const mcpProbeServer = resolveCodexMcpServerSpecForProbe(tokenPilotConfig.stateDir);
 
   await mkdir(dirname(codexConfigPath), { recursive: true });
   const existing = existsSync(codexConfigPath) ? await readFile(codexConfigPath, "utf8") : "";
@@ -259,14 +267,14 @@ export async function installCodexTokenPilot(params?: {
     });
   }
   const expectedHookCommand = resolveCodexHookCommandForInstall();
-  const mcpProbe = params?.probeMcp === false
+  const mcpProbeResult = params?.probeMcp === false
     ? {
       ok: false,
       timedOut: false,
       degraded: true,
       detail: "MCP startup probe skipped by installer options",
     }
-    : await probeTokenPilotMcpServer(mcpServer, {
+    : await probeTokenPilotMcpServer(mcpProbeServer, {
       timeoutMs: DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
       clientName: "tokenpilot-codex-install",
       clientVersion: "0.1.0",
@@ -284,8 +292,8 @@ export async function installCodexTokenPilot(params?: {
     expectedMcpArgs: mcpServer.args,
     expectedMcpStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     mcpProbe: {
-      ...mcpProbe,
-      degraded: !mcpProbe.ok,
+      ...mcpProbeResult,
+      degraded: !mcpProbeResult.ok,
     },
   };
 }
