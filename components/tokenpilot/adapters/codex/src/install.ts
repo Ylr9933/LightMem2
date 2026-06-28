@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { probeTokenPilotMcpServer, resolveTokenPilotMcpServerSpec, type TokenPilotMcpServerSpec } from "@tokenpilot/mcp";
+import {
+  DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
+  DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  probeTokenPilotMcpServer,
+  resolveTokenPilotMcpServerSpec,
+  type TokenPilotMcpServerSpec,
+} from "@tokenpilot/mcp";
 import {
   defaultCodexConfigPath,
   defaultHooksConfigPath,
@@ -9,9 +15,6 @@ import {
   loadTokenPilotCodexConfig,
   writeTokenPilotCodexConfig,
 } from "./config.js";
-
-const CODEX_MCP_STARTUP_TIMEOUT_SEC = 90;
-const CODEX_MCP_INSTALL_PROBE_TIMEOUT_MS = 15_000;
 
 function quoteToml(value: string): string {
   return JSON.stringify(value);
@@ -245,7 +248,7 @@ export async function installCodexTokenPilot(params?: {
     command: mcpServer.command,
     args: mcpServer.args,
     env: mcpServer.env,
-    startupTimeoutSec: CODEX_MCP_STARTUP_TIMEOUT_SEC,
+    startupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
   });
   await writeFile(codexConfigPath, next.endsWith("\n") ? next : `${next}\n`, "utf8");
   const hooksInstalled = params?.installHooks !== false;
@@ -264,7 +267,7 @@ export async function installCodexTokenPilot(params?: {
       detail: "MCP startup probe skipped by installer options",
     }
     : await probeTokenPilotMcpServer(mcpServer, {
-      timeoutMs: CODEX_MCP_INSTALL_PROBE_TIMEOUT_MS,
+      timeoutMs: DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
       clientName: "tokenpilot-codex-install",
       clientVersion: "0.1.0",
     });
@@ -279,7 +282,7 @@ export async function installCodexTokenPilot(params?: {
     expectedHookCommand,
     expectedMcpCommand: mcpServer.command,
     expectedMcpArgs: mcpServer.args,
-    expectedMcpStartupTimeoutSec: CODEX_MCP_STARTUP_TIMEOUT_SEC,
+    expectedMcpStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     mcpProbe: {
       ...mcpProbe,
       degraded: !mcpProbe.ok,

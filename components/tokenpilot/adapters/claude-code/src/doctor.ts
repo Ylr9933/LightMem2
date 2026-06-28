@@ -2,7 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  inspectTokenPilotMcpHealth,
   TOKENPILOT_MCP_SERVER_NAME,
+  type TokenPilotObservedMcpConfig,
   inspectClaudeMcpServerConfig,
   listClaudeMcpConfigCandidates,
 } from "@tokenpilot/mcp";
@@ -55,7 +58,6 @@ const HOOK_EVENT_NAMES = [
   "Stop",
   "SessionEnd",
 ] as const;
-const EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC = 90;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -188,6 +190,7 @@ export async function inspectClaudeCodeDoctor(params: {
   let mcpCommandMatches = false;
   let mcpArgsMatch = false;
   let mcpStartupTimeoutSecMatches = false;
+  let observedMcp: TokenPilotObservedMcpConfig | undefined;
 
   if (existsSync(params.settingsPath)) {
     settingsInstalled = true;
@@ -215,6 +218,7 @@ export async function inspectClaudeCodeDoctor(params: {
   for (const candidate of await listClaudeMcpConfigCandidates(params.mcpConfigPath)) {
     const inspected = await inspectClaudeMcpServerConfig(candidate, TOKENPILOT_MCP_SERVER_NAME);
     if (inspected.installed) {
+      observedMcp = inspected;
       mcpInstalled = true;
       mcpConfigPath = candidate;
       mcpStateDirMatches = inspected.env?.TOKENPILOT_STATE_DIR === params.config.stateDir;
@@ -223,7 +227,7 @@ export async function inspectClaudeCodeDoctor(params: {
         Array.isArray(inspected.args)
         && inspected.args.length === expectedMcpSpec.args.length
         && inspected.args.every((value, index) => value === expectedMcpSpec.args[index]);
-      mcpStartupTimeoutSecMatches = inspected.startupTimeoutSec === EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC;
+      mcpStartupTimeoutSecMatches = inspected.startupTimeoutSec === DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC;
       break;
     }
   }
@@ -236,12 +240,18 @@ export async function inspectClaudeCodeDoctor(params: {
   const hooksMatchExpectedCommand = HOOK_EVENT_NAMES.every((name) => matchedHookEvents.includes(name));
   const proxyHealthy = await checkHealth(proxyBaseUrl);
   const coreRuntimeHealthy = routedViaGateway && toolSearchEnabled && proxyHealthy;
-  const recoveryMcpHealthy =
-    mcpInstalled
-    && mcpStateDirMatches
-    && mcpCommandMatches
-    && mcpArgsMatch
-    && mcpStartupTimeoutSecMatches;
+  const mcpHealth = inspectTokenPilotMcpHealth({
+    observed: observedMcp,
+    expected: expectedMcpSpec,
+    expectedStateDir: params.config.stateDir,
+    expectedStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  });
+  mcpInstalled = mcpHealth.installed;
+  mcpStateDirMatches = mcpHealth.stateDirMatches;
+  mcpCommandMatches = mcpHealth.commandMatches;
+  mcpArgsMatch = mcpHealth.argsMatch;
+  mcpStartupTimeoutSecMatches = mcpHealth.startupTimeoutSecMatches;
+  const recoveryMcpHealthy = mcpHealth.healthy;
 
   return {
     settingsPath: params.settingsPath,
@@ -263,7 +273,7 @@ export async function inspectClaudeCodeDoctor(params: {
     mcpCommandMatches,
     mcpArgsMatch,
     mcpStartupTimeoutSecMatches,
-    expectedMcpStartupTimeoutSec: EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC,
+    expectedMcpStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     routedViaGateway,
     toolSearchEnabled,
     proxyHealthy,

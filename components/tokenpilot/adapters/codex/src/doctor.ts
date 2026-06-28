@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { TOKENPILOT_MCP_SERVER_NAME } from "@tokenpilot/mcp";
+import {
+  DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  inspectTokenPilotMcpHealth,
+  TOKENPILOT_MCP_SERVER_NAME,
+} from "@tokenpilot/mcp";
 import type { TokenPilotCodexConfig } from "./config.js";
 import { readCodexMcpServerFromToml, readCodexProviderFromToml } from "./config.js";
 import { readDaemonStatus } from "./daemon.js";
@@ -41,7 +45,6 @@ const HOOK_EVENT_NAMES = [
   "PostToolUse",
   "Stop",
 ] as const;
-const EXPECTED_CODEX_MCP_STARTUP_TIMEOUT_SEC = 90;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -175,16 +178,14 @@ export async function inspectCodexDoctor(params: {
   const hooksInstalled = installedHookEvents.length > 0;
   const hooksMatchExpectedCommand = HOOK_EVENT_NAMES.every((name) => matchedHookEvents.includes(name));
   const proxyHealthy = await checkHealth(proxyBaseUrl);
-  const mcpStartupTimeoutSecMatches = mcp?.startupTimeoutSec === EXPECTED_CODEX_MCP_STARTUP_TIMEOUT_SEC;
+  const mcpHealth = inspectTokenPilotMcpHealth({
+    observed: mcp,
+    expected: expectedMcpSpec,
+    expectedStateDir: params.config.stateDir,
+    expectedStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  });
   const coreRuntimeHealthy = Boolean(tokenpilotProvider) && daemon.running && proxyHealthy;
-  const recoveryMcpHealthy =
-    Boolean(mcp?.command)
-    && mcp?.env?.TOKENPILOT_STATE_DIR === params.config.stateDir
-    && mcp?.command === expectedMcpSpec.command
-    && Array.isArray(mcp?.args)
-    && mcp.args.length === expectedMcpSpec.args.length
-    && mcp.args.every((value, index) => value === expectedMcpSpec.args[index])
-    && mcpStartupTimeoutSecMatches;
+  const recoveryMcpHealthy = mcpHealth.healthy;
   return {
     configPath: params.configPath,
     hooksConfigPath: params.hooksConfigPath,
@@ -203,15 +204,12 @@ export async function inspectCodexDoctor(params: {
     proxyHealthy,
     stateDir: params.config.stateDir,
     upstreamProvider: params.config.upstreamProvider,
-    mcpInstalled: Boolean(mcp?.command),
-    mcpStateDirMatches: mcp?.env?.TOKENPILOT_STATE_DIR === params.config.stateDir,
-    mcpCommandMatches: mcp?.command === expectedMcpSpec.command,
-    mcpArgsMatch:
-      Array.isArray(mcp?.args)
-      && mcp.args.length === expectedMcpSpec.args.length
-      && mcp.args.every((value, index) => value === expectedMcpSpec.args[index]),
-    mcpStartupTimeoutSecMatches,
-    expectedMcpStartupTimeoutSec: EXPECTED_CODEX_MCP_STARTUP_TIMEOUT_SEC,
+    mcpInstalled: mcpHealth.installed,
+    mcpStateDirMatches: mcpHealth.stateDirMatches,
+    mcpCommandMatches: mcpHealth.commandMatches,
+    mcpArgsMatch: mcpHealth.argsMatch,
+    mcpStartupTimeoutSecMatches: mcpHealth.startupTimeoutSecMatches,
+    expectedMcpStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     coreRuntimeHealthy,
     recoveryMcpHealthy,
     degradedMode: coreRuntimeHealthy && !recoveryMcpHealthy,

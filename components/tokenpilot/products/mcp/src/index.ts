@@ -11,6 +11,8 @@ import {
 } from "@tokenpilot/runtime-core";
 
 export const TOKENPILOT_MCP_SERVER_NAME = "tokenpilot_memory_fault_recover";
+export const DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC = 90;
+export const DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS = 15_000;
 export { MEMORY_FAULT_RECOVER_TOOL_NAME } from "@tokenpilot/runtime-core";
 
 export type TokenPilotMcpServerSpec = {
@@ -30,6 +32,22 @@ export type TokenPilotMcpProbeResult = {
   ok: boolean;
   detail: string;
   timedOut: boolean;
+};
+
+export type TokenPilotObservedMcpConfig = {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  startupTimeoutSec?: number;
+};
+
+export type TokenPilotMcpHealthSummary = {
+  installed: boolean;
+  stateDirMatches: boolean;
+  commandMatches: boolean;
+  argsMatch: boolean;
+  startupTimeoutSecMatches: boolean;
+  healthy: boolean;
 };
 
 function packageRootFromHere(): string {
@@ -126,7 +144,7 @@ export async function probeTokenPilotMcpServer(
     clientVersion?: string;
   },
 ): Promise<TokenPilotMcpProbeResult> {
-  const timeoutMs = params?.timeoutMs ?? 15_000;
+  const timeoutMs = params?.timeoutMs ?? DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS;
   const clientName = params?.clientName?.trim() || "tokenpilot-mcp-probe";
   const clientVersion = params?.clientVersion?.trim() || "0.1.0";
 
@@ -214,6 +232,38 @@ export async function probeTokenPilotMcpServer(
       },
     }));
   });
+}
+
+export function inspectTokenPilotMcpHealth(params: {
+  observed?: TokenPilotObservedMcpConfig | null;
+  expected: TokenPilotMcpServerSpec;
+  expectedStateDir: string;
+  expectedStartupTimeoutSec?: number;
+}): TokenPilotMcpHealthSummary {
+  const observed = params.observed ?? undefined;
+  const expectedStartupTimeoutSec =
+    params.expectedStartupTimeoutSec ?? DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC;
+  const argsMatch =
+    Array.isArray(observed?.args)
+    && observed.args.length === params.expected.args.length
+    && observed.args.every((value, index) => value === params.expected.args[index]);
+  const installed = Boolean(observed?.command);
+  const stateDirMatches = observed?.env?.TOKENPILOT_STATE_DIR === params.expectedStateDir;
+  const commandMatches = observed?.command === params.expected.command;
+  const startupTimeoutSecMatches = observed?.startupTimeoutSec === expectedStartupTimeoutSec;
+  return {
+    installed,
+    stateDirMatches,
+    commandMatches,
+    argsMatch,
+    startupTimeoutSecMatches,
+    healthy:
+      installed
+      && stateDirMatches
+      && commandMatches
+      && argsMatch
+      && startupTimeoutSecMatches,
+  };
 }
 
 export async function inspectClaudeMcpServerConfig(configPath: string, serverName = TOKENPILOT_MCP_SERVER_NAME): Promise<{

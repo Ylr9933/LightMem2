@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { probeTokenPilotMcpServer, resolveTokenPilotMcpServerSpec, type TokenPilotMcpServerSpec } from "@tokenpilot/mcp";
+import {
+  DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
+  DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  probeTokenPilotMcpServer,
+  resolveTokenPilotMcpServerSpec,
+  type TokenPilotMcpServerSpec,
+} from "@tokenpilot/mcp";
 import {
   CLAUDE_TOOL_SEARCH_DEFAULT,
   CLAUDE_TOOL_SEARCH_ENV,
@@ -12,9 +18,6 @@ import {
   proxyBaseUrlForPort,
   writeTokenPilotClaudeCodeConfig,
 } from "./config.js";
-
-const CLAUDE_CODE_MCP_STARTUP_TIMEOUT_SEC = 90;
-const CLAUDE_CODE_MCP_INSTALL_PROBE_TIMEOUT_MS = 15_000;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -155,7 +158,7 @@ export async function installClaudeCodeTokenPilot(params?: {
       command: mcpServer.command,
       args: mcpServer.args,
       env: mcpServer.env,
-      startup_timeout_sec: CLAUDE_CODE_MCP_STARTUP_TIMEOUT_SEC,
+      startup_timeout_sec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     },
   };
   await mkdir(dirname(mcpConfigPath), { recursive: true });
@@ -172,7 +175,7 @@ export async function installClaudeCodeTokenPilot(params?: {
       detail: "MCP startup probe skipped by installer options",
     }
     : await probeTokenPilotMcpServer(mcpServer, {
-      timeoutMs: CLAUDE_CODE_MCP_INSTALL_PROBE_TIMEOUT_MS,
+      timeoutMs: DEFAULT_TOKENPILOT_MCP_INSTALL_PROBE_TIMEOUT_MS,
       clientName: "tokenpilot-claude-code-install",
       clientVersion: "0.1.0",
     });
@@ -191,7 +194,7 @@ export async function installClaudeCodeTokenPilot(params?: {
     expectedHookCommand: command,
     expectedMcpCommand: mcpServer.command,
     expectedMcpArgs: mcpServer.args,
-    expectedMcpStartupTimeoutSec: CLAUDE_CODE_MCP_STARTUP_TIMEOUT_SEC,
+    expectedMcpStartupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
     mcpProbe: {
       ...mcpProbe,
       degraded: !mcpProbe.ok,
