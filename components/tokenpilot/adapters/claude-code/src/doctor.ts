@@ -38,9 +38,14 @@ export type ClaudeCodeDoctorReport = {
   mcpStateDirMatches: boolean;
   mcpCommandMatches: boolean;
   mcpArgsMatch: boolean;
+  mcpStartupTimeoutSecMatches: boolean;
+  expectedMcpStartupTimeoutSec: number;
   stateDirExists: boolean;
   sessionStateAvailable: boolean;
   uxEffectsAvailable: boolean;
+  coreRuntimeHealthy: boolean;
+  recoveryMcpHealthy: boolean;
+  degradedMode: boolean;
 };
 
 const HOOK_EVENT_NAMES = [
@@ -50,6 +55,7 @@ const HOOK_EVENT_NAMES = [
   "Stop",
   "SessionEnd",
 ] as const;
+const EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC = 90;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -103,6 +109,9 @@ function remediationLines(report: ClaudeCodeDoctorReport): string[] {
   if (!report.mcpInstalled || !report.mcpStateDirMatches || !report.mcpCommandMatches || !report.mcpArgsMatch) {
     fixes.push("- rerun the Claude Code install command to refresh the recovery MCP server entry in `.claude.json`");
   }
+  if (report.mcpInstalled && !report.mcpStartupTimeoutSecMatches) {
+    fixes.push("- rerun the Claude Code install command or set the recovery MCP `startup_timeout_sec` to the expected value");
+  }
   if (report.settingsInstalled && fixes.length === 0 && !report.proxyHealthy) {
     fixes.push("- start the local TokenPilot Claude Code gateway before using Claude Code");
   }
@@ -119,6 +128,10 @@ export function formatClaudeCodeDoctorReport(report: ClaudeCodeDoctorReport): st
     `- expected hook command: ${report.expectedHookCommand}`,
     `- expected MCP command: ${report.expectedMcpCommand}`,
     `- expected MCP args: ${report.expectedMcpArgs.length > 0 ? report.expectedMcpArgs.join(" ") : "(none)"}`,
+    `- expected MCP startup timeout: ${report.expectedMcpStartupTimeoutSec}s`,
+    `- core runtime healthy: ${report.coreRuntimeHealthy ? "yes" : "no"}`,
+    `- recovery MCP healthy: ${report.recoveryMcpHealthy ? "yes" : "no"}`,
+    `- degraded mode: ${report.degradedMode ? "yes" : "no"}`,
     `- settings installed: ${report.settingsInstalled ? "yes" : "no"}`,
     `- observability hooks installed: ${report.hooksInstalled ? "yes" : "no"}`,
     `- observability hooks complete: ${report.hooksComplete ? "yes" : "no"}`,
@@ -129,6 +142,7 @@ export function formatClaudeCodeDoctorReport(report: ClaudeCodeDoctorReport): st
     `- recovery MCP stateDir matches: ${report.mcpStateDirMatches ? "yes" : "no"}`,
     `- recovery MCP command matches: ${report.mcpCommandMatches ? "yes" : "no"}`,
     `- recovery MCP args match: ${report.mcpArgsMatch ? "yes" : "no"}`,
+    `- recovery MCP startup timeout matches: ${report.mcpStartupTimeoutSecMatches ? "yes" : "no"}`,
     `- routed via gateway: ${report.routedViaGateway ? "yes" : "no"}`,
     `- tool search enabled: ${report.toolSearchEnabled ? "yes" : "no"}`,
     `- proxy healthy: ${report.proxyHealthy ? "yes" : "no"}`,
@@ -138,6 +152,14 @@ export function formatClaudeCodeDoctorReport(report: ClaudeCodeDoctorReport): st
     `- session state available: ${report.sessionStateAvailable ? "yes" : "no"}`,
     `- ux effects available: ${report.uxEffectsAvailable ? "yes" : "no"}`,
   ];
+  if (report.degradedMode) {
+    lines.push(
+      "",
+      "Degraded mode:",
+      "- Claude Code gateway routing and reduction remain available",
+      "- real `memory_fault_recover` MCP recovery is currently unavailable or drifted",
+    );
+  }
   const fixes = remediationLines(report);
   if (fixes.length > 0) {
     lines.push("", "Suggested fixes:");
@@ -165,6 +187,7 @@ export async function inspectClaudeCodeDoctor(params: {
   let mcpStateDirMatches = false;
   let mcpCommandMatches = false;
   let mcpArgsMatch = false;
+  let mcpStartupTimeoutSecMatches = false;
 
   if (existsSync(params.settingsPath)) {
     settingsInstalled = true;
@@ -200,6 +223,7 @@ export async function inspectClaudeCodeDoctor(params: {
         Array.isArray(inspected.args)
         && inspected.args.length === expectedMcpSpec.args.length
         && inspected.args.every((value, index) => value === expectedMcpSpec.args[index]);
+      mcpStartupTimeoutSecMatches = inspected.startupTimeoutSec === EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC;
       break;
     }
   }
@@ -210,6 +234,14 @@ export async function inspectClaudeCodeDoctor(params: {
   const missingHookEvents = HOOK_EVENT_NAMES.filter((name) => !installedHookEvents.includes(name));
   const hooksComplete = missingHookEvents.length === 0;
   const hooksMatchExpectedCommand = HOOK_EVENT_NAMES.every((name) => matchedHookEvents.includes(name));
+  const proxyHealthy = await checkHealth(proxyBaseUrl);
+  const coreRuntimeHealthy = routedViaGateway && toolSearchEnabled && proxyHealthy;
+  const recoveryMcpHealthy =
+    mcpInstalled
+    && mcpStateDirMatches
+    && mcpCommandMatches
+    && mcpArgsMatch
+    && mcpStartupTimeoutSecMatches;
 
   return {
     settingsPath: params.settingsPath,
@@ -230,12 +262,17 @@ export async function inspectClaudeCodeDoctor(params: {
     mcpStateDirMatches,
     mcpCommandMatches,
     mcpArgsMatch,
+    mcpStartupTimeoutSecMatches,
+    expectedMcpStartupTimeoutSec: EXPECTED_CLAUDE_MCP_STARTUP_TIMEOUT_SEC,
     routedViaGateway,
     toolSearchEnabled,
-    proxyHealthy: await checkHealth(proxyBaseUrl),
+    proxyHealthy,
     upstreamBaseUrl: params.config.upstreamBaseUrl,
     stateDirExists,
     sessionStateAvailable,
     uxEffectsAvailable,
+    coreRuntimeHealthy,
+    recoveryMcpHealthy,
+    degradedMode: coreRuntimeHealthy && !recoveryMcpHealthy,
   };
 }

@@ -15,9 +15,15 @@ async function main() {
     `- expected hook command: ${result.expectedHookCommand}`,
     `- expected MCP command: ${result.expectedMcpCommand}`,
     `- expected MCP args: ${result.expectedMcpArgs.join(" ")}`,
+    `- expected MCP startup timeout: ${result.expectedMcpStartupTimeoutSec}s`,
     `- tool search env: ${result.toolSearchEnvName}=${result.toolSearchEnvValue}`,
     `- recovery MCP server: ${result.mcpServerName}`,
+    `- recovery MCP probe: ${result.mcpProbe.ok ? "ok" : "degraded"}`,
+    `- recovery MCP probe detail: ${result.mcpProbe.detail}`,
   ].join("\n"));
+  if (result.mcpProbe.degraded) {
+    console.log("MCP recovery is currently degraded. Claude Code gateway routing and reduction remain usable, but `memory_fault_recover` may be unavailable until MCP startup succeeds.");
+  }
 }
 
 main().catch((error) => {

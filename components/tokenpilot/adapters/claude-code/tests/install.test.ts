@@ -38,7 +38,7 @@ test("installClaudeCodeTokenPilot writes settings, MCP config, and backups exist
     }
 
     const mcp = JSON.parse(await readFile(mcpConfigPath, "utf8")) as {
-      mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
+      mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string>; startup_timeout_sec?: number }>;
     };
     assert.equal(typeof mcp.mcpServers?.tokenpilot_memory_fault_recover?.command, "string");
     assert.equal(
@@ -47,10 +47,32 @@ test("installClaudeCodeTokenPilot writes settings, MCP config, and backups exist
     );
     assert.equal(mcp.mcpServers?.tokenpilot_memory_fault_recover?.command, result.expectedMcpCommand);
     assert.deepEqual(mcp.mcpServers?.tokenpilot_memory_fault_recover?.args ?? [], result.expectedMcpArgs);
+    assert.equal(mcp.mcpServers?.tokenpilot_memory_fault_recover?.startup_timeout_sec, 90);
     assert.equal(typeof mcp.mcpServers?.existing?.command, "string");
     assert.equal(result.hooksInstalled, true);
     assert.match(result.expectedHookCommand, /hooks-handler\.(js|ts)/);
     assert.ok(result.expectedMcpArgs.length > 0);
+    assert.equal(result.expectedMcpStartupTimeoutSec, 90);
+    assert.equal(result.mcpProbe.ok, true);
+    assert.equal(result.mcpProbe.degraded, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("installClaudeCodeTokenPilot reports degraded MCP mode when probe is skipped", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightmem2-claude-install-skip-probe-"));
+  try {
+    const result = await installClaudeCodeTokenPilot({
+      settingsPath: join(dir, "settings.json"),
+      mcpConfigPath: join(dir, ".claude.json"),
+      tokenPilotConfigPath: join(dir, "tokenpilot.json"),
+      probeMcp: false,
+    });
+
+    assert.equal(result.mcpProbe.ok, false);
+    assert.equal(result.mcpProbe.degraded, true);
+    assert.match(result.mcpProbe.detail, /skipped/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

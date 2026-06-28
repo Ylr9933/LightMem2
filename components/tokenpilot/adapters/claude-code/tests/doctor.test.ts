@@ -81,6 +81,7 @@ test("inspectClaudeCodeDoctor detects gateway routing from settings env", async 
           env: {
             TOKENPILOT_STATE_DIR: stateDir,
           },
+          startup_timeout_sec: 90,
         },
       },
     }, null, 2)}\n`, "utf8");
@@ -114,6 +115,7 @@ test("inspectClaudeCodeDoctor detects gateway routing from settings env", async 
     assert.equal(report.mcpStateDirMatches, true);
     assert.equal(report.mcpCommandMatches, true);
     assert.equal(report.mcpArgsMatch, false);
+    assert.equal(report.mcpStartupTimeoutSecMatches, true);
     assert.equal(report.routedViaGateway, true);
     assert.equal(report.toolSearchEnabled, true);
     assert.equal(report.stateDirExists, true);
@@ -150,6 +152,7 @@ test("inspectClaudeCodeDoctor reports partial hook installs explicitly", async (
           env: {
             TOKENPILOT_STATE_DIR: stateDir,
           },
+          startup_timeout_sec: 90,
         },
       },
     }, null, 2)}\n`, "utf8");
@@ -209,6 +212,7 @@ test("inspectClaudeCodeDoctor detects hook command drift explicitly", async () =
           env: {
             TOKENPILOT_STATE_DIR: stateDir,
           },
+          startup_timeout_sec: 90,
         },
       },
     }, null, 2)}\n`, "utf8");
@@ -257,6 +261,7 @@ test("inspectClaudeCodeDoctor detects MCP command and args drift explicitly", as
           env: {
             TOKENPILOT_STATE_DIR: stateDir,
           },
+          startup_timeout_sec: 90,
         },
       },
     }, null, 2)}\n`, "utf8");
@@ -292,4 +297,45 @@ test("formatClaudeCodeDoctorReport includes remediation hints for drifted instal
   const text = formatClaudeCodeDoctorReport(report);
   assert.match(text, /Suggested fixes:/);
   assert.match(text, /install:claude-code/);
+});
+
+test("formatClaudeCodeDoctorReport shows degraded mode when core runtime is healthy but MCP recovery drifted", () => {
+  const text = formatClaudeCodeDoctorReport({
+    settingsPath: "/tmp/settings.json",
+    tokenPilotConfigPath: "/tmp/tokenpilot.json",
+    stateDir: "/tmp/state",
+    proxyBaseUrl: "http://127.0.0.1:17667",
+    mcpConfigPath: "/tmp/.claude.json",
+    expectedHookCommand: "node hooks-handler.js",
+    expectedMcpCommand: process.execPath,
+    expectedMcpArgs: ["/tmp/server.js"],
+    expectedMcpStartupTimeoutSec: 90,
+    settingsInstalled: true,
+    hooksInstalled: true,
+    hooksComplete: true,
+    hooksMatchExpectedCommand: true,
+    installedHookEvents: ["SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"],
+    missingHookEvents: [],
+    routedViaGateway: true,
+    toolSearchEnabled: true,
+    proxyHealthy: true,
+    upstreamBaseUrl: "https://api.anthropic.com",
+    mcpInstalled: true,
+    mcpStateDirMatches: true,
+    mcpCommandMatches: true,
+    mcpArgsMatch: true,
+    mcpStartupTimeoutSecMatches: false,
+    stateDirExists: true,
+    sessionStateAvailable: true,
+    uxEffectsAvailable: true,
+    coreRuntimeHealthy: true,
+    recoveryMcpHealthy: false,
+    degradedMode: true,
+  });
+
+  assert.match(text, /core runtime healthy: yes/);
+  assert.match(text, /recovery MCP healthy: no/);
+  assert.match(text, /degraded mode: yes/);
+  assert.match(text, /gateway routing and reduction remain available/);
+  assert.match(text, /startup_timeout_sec/);
 });

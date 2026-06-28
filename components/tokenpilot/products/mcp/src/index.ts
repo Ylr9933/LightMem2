@@ -68,6 +68,7 @@ export async function inspectClaudeMcpServerConfig(configPath: string, serverNam
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  startupTimeoutSec?: number;
 }> {
   if (!existsSync(configPath)) return { installed: false };
   try {
@@ -83,6 +84,12 @@ export async function inspectClaudeMcpServerConfig(configPath: string, serverNam
       command: typeof entry.command === "string" ? entry.command : undefined,
       args,
       env,
+      startupTimeoutSec:
+        typeof entry.startup_timeout_sec === "number"
+          ? entry.startup_timeout_sec
+          : typeof entry.startupTimeoutSec === "number"
+            ? entry.startupTimeoutSec
+            : undefined,
     };
   } catch {
     return { installed: false };
